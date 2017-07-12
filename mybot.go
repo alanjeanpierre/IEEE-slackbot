@@ -38,8 +38,8 @@ import (
 	)
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token\n")
+	if len(os.Args) != 4 {
+		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user log/file/location/\n")
 		os.Exit(1)
 	}
 
@@ -48,6 +48,7 @@ func main() {
 	fmt.Println("mybot ready, ^C exits")
 	
 	boss := os.Args[2]
+	logloc := os.Args[3]
 
 	for {
 		// read each incoming message
@@ -59,7 +60,7 @@ func main() {
 
 		
 		if m.Type == "message" {
-			file, err := os.OpenFile(m.Channel, os.O_WRONLY | os.O_CREATE | os.O_APPEND, 664)
+			file, err := os.OpenFile(logloc+m.Channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
@@ -79,7 +80,7 @@ func main() {
 				log.Fatal(err)
 			}
 			//fmt.Println(m.Channel)
-			fmt.Fprintf(file, "%s, %v, %s\n", time.Unix(tms, tns), m.User, m.Text)
+			fmt.Fprintf(file, "%s, %v, \"%q\"\n", time.Unix(tms, tns), m.User, m.Text)
 			//fmt.Fprintf(file, 
 			
 			err = file.Close()
