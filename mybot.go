@@ -80,7 +80,7 @@ func main() {
 				log.Fatal(err)
 			}
 			//fmt.Println(m.Channel)
-			fmt.Fprintf(file, "%s, %v, \"%q\"\n", time.Unix(tms, tns), m.User, m.Text)
+			fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), m.User, m.Text)
 			//fmt.Fprintf(file, 
 			
 			err = file.Close()
