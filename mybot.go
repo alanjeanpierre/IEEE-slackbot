@@ -32,10 +32,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
-)
+	"time"
+	"strconv"
+	"golang.org/x/net/websocket"
+	)
 
 func main() {
-	if len(os.Args) != 2 {
+	if len(os.Args) != 3 {
 		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token\n")
 		os.Exit(1)
 	}
@@ -43,32 +46,80 @@ func main() {
 	// start a websocket-based Real Time API session
 	ws, id := slackConnect(os.Args[1])
 	fmt.Println("mybot ready, ^C exits")
+	
+	boss := os.Args[2]
 
 	for {
 		// read each incoming message
 		m, err := getMessage(ws)
 		if err != nil {
+			death(m, ws)
 			log.Fatal(err)
 		}
 
-		// see if we're mentioned
-		if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">") {
-			// if so try to parse if
-			parts := strings.Fields(m.Text)
-			if len(parts) == 3 && parts[1] == "stock" {
-				// looks good, get the quote and reply with the result
-				go func(m Message) {
-					m.Text = getQuote(parts[2])
+		
+		if m.Type == "message" {
+			file, err := os.OpenFile(m.Channel, os.O_WRONLY | os.O_CREATE | os.O_APPEND, 664)
+			if err != nil {
+				death(m, ws)
+				log.Fatal(err)
+			}
+			times := strings.Split(m.TS, ".")
+			if len(times) != 2 {
+				continue
+			}
+			tms, err := strconv.ParseInt(times[0], 10, 64)
+			if err != nil {
+				death(m, ws)
+				log.Fatal(err)
+			}
+			tns, err := strconv.ParseInt(times[1], 10, 64)
+			if err != nil {
+				death(m, ws)
+				log.Fatal(err)
+			}
+			//fmt.Println(m.Channel)
+			fmt.Fprintf(file, "%s, %v, %s\n", time.Unix(tms, tns), m.User, m.Text)
+			//fmt.Fprintf(file, 
+			
+			err = file.Close()
+			if err != nil {
+				death(m, ws)
+				log.Fatal(err)
+			}
+			
+			
+			// if bot is mentioned
+			if strings.HasPrefix(m.Text, "<@"+id+">") {
+			
+				// elevated priviledges?
+				if m.User == boss {
+				
+				}
+				// if so try to parse if
+				parts := strings.Fields(m.Text)
+				if len(parts) == 3 && parts[1] == "stock" {
+					// looks good, get the quote and reply with the result
+					go func(m Message) {
+						m.Text = getQuote(parts[2])
+						postMessage(ws, m)
+					}(m)
+					// NOTE: the Message object is copied, this is intentional
+				} else {
+					// huh?
+					m.Text = fmt.Sprintf("sorry, that does not compute\n")
 					postMessage(ws, m)
-				}(m)
-				// NOTE: the Message object is copied, this is intentional
-			} else {
-				// huh?
-				m.Text = fmt.Sprintf("sorry, that does not compute\n")
-				postMessage(ws, m)
+				}
 			}
 		}
+		
 	}
+}
+
+func death(m Message, ws *websocket.Conn) {
+	m.Channel = "D67GB3LJ0" // dm to me
+	m.Text = "Rip, I'm dead"
+	postMessage(ws, m)
 }
 
 // Get the quote via Yahoo. You should replace this method to something
