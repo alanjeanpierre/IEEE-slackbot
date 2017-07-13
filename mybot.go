@@ -27,7 +27,9 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -69,19 +71,20 @@ func main() {
 			if len(times) != 2 {
 				continue
 			}
+			
 			tms, err := strconv.ParseInt(times[0], 10, 64)
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
 			}
+			
 			tns, err := strconv.ParseInt(times[1], 10, 64)
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
 			}
-			//fmt.Println(m.Channel)
+			
 			fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), m.User, m.Text)
-			//fmt.Fprintf(file, 
 			
 			err = file.Close()
 			if err != nil {
@@ -95,17 +98,28 @@ func main() {
 			
 				// elevated priviledges?
 				if m.User == boss {
-				
+					
 				}
 				// if so try to parse if
 				parts := strings.Fields(m.Text)
-				if len(parts) == 3 && parts[1] == "stock" {
-					// looks good, get the quote and reply with the result
-					go func(m Message) {
-						m.Text = getQuote(parts[2])
+				if len(parts) == 3 {
+					
+					// stock
+					if parts[1] == "stock" {
+						// looks good, get the quote and reply with the result
+						go func(m Message) {
+							m.Text = getQuote(parts[2])
+							postMessage(ws, m)
+						}(m)
+						// NOTE: the Message object is copied, this is intentional
+					} else if parts[1] == "wiki" && parts[2] == "challenge"	{
+							go wikichall(m, ws)
+						
+					} else {
+						// huh?
+						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
-					}(m)
-					// NOTE: the Message object is copied, this is intentional
+					}
 				} else {
 					// huh?
 					m.Text = fmt.Sprintf("sorry, that does not compute\n")
@@ -121,6 +135,58 @@ func death(m Message, ws *websocket.Conn) {
 	m.Channel = "D67GB3LJ0" // dm to me
 	m.Text = "Rip, I'm dead"
 	postMessage(ws, m)
+}
+
+type random struct {
+	ID int	`json:"id"`
+	NS int `json:"ns"`
+	Title string `json:"title"`
+}
+
+type query struct {
+	Random[] random `json:"random"`
+}
+
+type wikiresp struct {
+	
+	Query query `json:"query"`
+
+}
+
+
+
+func wikichall(m Message, ws *websocket.Conn) (Message) {
+	resp, err := http.Get("https://en.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=2")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+		return m
+	}
+	
+	body, err := ioutil.ReadAll(resp.Body)
+	
+	resp.Body.Close()
+	if err != nil {
+		return m
+	}
+	
+	var response wikiresp 
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Println("I died")
+		return m
+	}
+	
+	page1:=strings.Replace(response.Query.Random[0].Title, " ", "_", -1)
+	page2:=strings.Replace(response.Query.Random[1].Title, " ", "_", -1)
+	
+	m.Text = fmt.Sprintf("Try to get from https://en.wikipedia.org/wiki/%s to https://en.wikipedia.org/wiki/%s using only the links on the page!", page1, page2)
+
+	postMessage(ws, m)
+	return m
+
 }
 
 // Get the quote via Yahoo. You should replace this method to something
