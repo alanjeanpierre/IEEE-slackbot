@@ -67,6 +67,9 @@ func slackStart(token string) (wsurl, id string, err error) {
 	if err != nil {
 		return
 	}
+	
+	
+		
 	var respObj responseRtmStart
 	err = json.Unmarshal(body, &respObj)
 	if err != nil {
@@ -94,11 +97,6 @@ type Message struct {
 	Channel string `json:"channel"`
 	Text    string `json:"text"`
 	TS		string `json:"ts"`
-}
-
-type User struct {
-	Id		uint64 `json:"id"`
-	Name	string `json:"name"`
 }
 
 func getMessage(ws *websocket.Conn) (m Message, err error) {

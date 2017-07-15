@@ -37,11 +37,12 @@ import (
 	"time"
 	"strconv"
 	"golang.org/x/net/websocket"
+	"bufio"
 	)
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user log/file/location/\n")
+	if len(os.Args) != 5 {
+		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user log/file/location/ /user/and/chan/file/location/ \n")
 		os.Exit(1)
 	}
 
@@ -52,6 +53,12 @@ func main() {
 	boss := os.Args[2]
 	logloc := os.Args[3]
 
+	//var lookup map[string]string
+	user_lookup := make(map[string]string)
+	channel_lookup := make(map[string]string)
+	
+	loadmap(user_lookup, channel_lookup)
+	
 	for {
 		// read each incoming message
 		m, err := getMessage(ws)
@@ -62,7 +69,21 @@ func main() {
 
 		
 		if m.Type == "message" {
-			file, err := os.OpenFile(logloc+m.Channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
+		
+			usr, ok := user_lookup[m.User]
+			if !ok {
+				usr = findUser(m.User, os.Args[1])
+				user_lookup[m.User] = usr
+			}
+			
+			channel, ok := channel_lookup[m.Channel]
+			if !ok {
+				channel = findChannel(m.Channel, os.Args[1])
+				channel_lookup[m.Channel] = channel
+			
+			}
+			
+			file, err := os.OpenFile(logloc+channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
@@ -84,7 +105,7 @@ func main() {
 				log.Fatal(err)
 			}
 			
-			fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), m.User, m.Text)
+			fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), usr, m.Text)
 			
 			err = file.Close()
 			if err != nil {
@@ -97,8 +118,11 @@ func main() {
 			if strings.HasPrefix(m.Text, "<@"+id+">") {
 			
 				// elevated priviledges?
-				if m.User == boss {
-					
+				if usr == boss {
+					if m.Text == "<@"+id+"> cleanup" {
+						savemap(user_lookup, channel_lookup, os.Args[4])
+						continue
+					}
 				}
 				// if so try to parse if
 				parts := strings.Fields(m.Text)
@@ -151,6 +175,143 @@ type wikiresp struct {
 	
 	Query query `json:"query"`
 
+}
+
+type SlackUserObject struct {
+	Ok	bool	`json:"ok"`
+	User User	`json:"user"`
+}
+
+type SlackChannelObject struct {
+	Ok	bool	`json:"ok"`
+	Channel Channel	`json:"channel"`
+}
+
+type User struct {
+	Id		string `json:"id"`
+	Name	string `json:"name"`
+}
+
+type Channel struct {
+	Id		string `json:"id"`
+	Name	string `json:"name"`
+}
+
+func loadmap(user map[string]string, channel map[string]string) {
+	
+	file, err := os.OpenFile("usrs", os.O_RDONLY, 0664)
+		if err == nil {
+		
+			scanner := bufio.NewScanner(file)
+			
+			for scanner.Scan() {
+				
+				users := strings.Fields(scanner.Text())
+				user[users[0]] = users[1]
+			}
+		}
+	
+	file, err = os.OpenFile("channels", os.O_RDONLY, 0664)
+		if err == nil {
+		
+			scanner := bufio.NewScanner(file)
+			
+			for scanner.Scan() {
+				
+				channels := strings.Fields(scanner.Text())
+				channel[channels[0]] = channels[1]
+			}
+		}
+
+}
+
+func savemap(user map[string]string, channel map[string]string, location string) {
+	file, err := os.OpenFile(location+"usrs", os.O_WRONLY | os.O_CREATE, 0664)
+		if err != nil {
+			log.Fatal(err)
+		}
+	for key, value := range user {
+		fmt.Fprintf(file, "%s %s\n", key, value)
+	}
+	
+	file, err = os.OpenFile(location+"channels", os.O_WRONLY | os.O_CREATE, 0664)
+		if err != nil {
+			log.Fatal(err)
+		}
+	for key, value := range channel {
+		fmt.Fprintf(file, "%s %s\n", key, value)
+	}
+}
+
+func findChannel(channel string, token string) (string) {
+
+	
+	url := fmt.Sprintf("https://slack.com/api/channels.info?token=%s&channel=%s", token, channel)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+		fmt.Println(err)
+		return "idk"
+	}
+	
+	body, err := ioutil.ReadAll(resp.Body)
+	
+	resp.Body.Close()
+	if err != nil {
+		
+		fmt.Println(err)
+		return "idk"
+	}
+	
+	var response SlackChannelObject
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Println("I died - find channel")
+		fmt.Println(err)
+		return "idk"
+	}
+	
+	if response.Ok {
+	    return response.Channel.Name
+	} else {
+		return "Private - " + channel
+	}
+	
+
+}
+
+func findUser(usr string, token string) (string) {
+	url := fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", token, usr)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+		fmt.Println(err)
+		return "idk"
+	}
+	
+	body, err := ioutil.ReadAll(resp.Body)
+	
+	resp.Body.Close()
+	if err != nil {
+		fmt.Println(err)
+		return "idk"
+	}
+	
+	var response SlackUserObject
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Println("I died - find user")
+		fmt.Println(err)
+		return "idk"
+	}
+	return response.User.Name
+	
 }
 
 
