@@ -38,11 +38,12 @@ import (
 	"strconv"
 	"golang.org/x/net/websocket"
 	"bufio"
+	"math/rand"
 	)
 
 func main() {
-	if len(os.Args) != 5 {
-		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user log/file/location/ /user/and/chan/file/location/ \n")
+	if len(os.Args) != 4 {
+		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user /root/working/directory \n")
 		os.Exit(1)
 	}
 
@@ -51,7 +52,7 @@ func main() {
 	fmt.Println("mybot ready, ^C exits")
 	
 	boss := os.Args[2]
-	logloc := os.Args[3]
+	rootloc := os.Args[3]
 
 	//var lookup map[string]string
 	user_lookup := make(map[string]string)
@@ -68,7 +69,7 @@ func main() {
 		}
 
 		
-		if m.Type == "message" {
+		if m.Type == "message" && m.Text != "" {
 		
 			usr, ok := user_lookup[m.User]
 			if !ok {
@@ -83,7 +84,7 @@ func main() {
 			
 			}
 			
-			file, err := os.OpenFile(logloc+channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
+			file, err := os.OpenFile(rootloc+"logs/"+channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
@@ -120,13 +121,13 @@ func main() {
 				// elevated priviledges?
 				if usr == boss {
 					if m.Text == "<@"+id+"> cleanup" {
-						savemap(user_lookup, channel_lookup, os.Args[4])
+						savemap(user_lookup, channel_lookup, rootloc)
 						continue
 					}
 				}
 				// if so try to parse if
 				parts := strings.Fields(m.Text)
-				if len(parts) == 3 {
+				if len(parts) >= 3 {
 					
 					// stock
 					if parts[1] == "stock" {
@@ -138,6 +139,33 @@ func main() {
 						// NOTE: the Message object is copied, this is intentional
 					} else if parts[1] == "wiki" && parts[2] == "challenge"	{
 							go wikichall(m, ws)
+						
+					} else if parts[1] == "links" {
+						if parts[2] == "add" {
+							link := parts[3]
+							link = link[1:len(link)-1]
+							file, err := os.OpenFile(rootloc+"links", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
+							if err != nil {
+								continue
+							}
+							fmt.Fprintf(file, "%s\n", link)
+							file.Close()
+											
+						} else if parts[2] == "get" {
+							go func(m Message) {
+								links, err := readLines(rootloc+"links")
+								if err != nil {
+									return
+								}
+								index := rand.Intn(len(links))
+								m.Text = "Enjoy! " + links[index]
+								postMessage(ws, m)
+							} (m)
+						} else {
+							// huh?
+							m.Text = fmt.Sprintf("sorry, that does not compute. @onee-sama links add|get\n")
+							postMessage(ws, m)
+						}
 						
 					} else {
 						// huh?
@@ -153,6 +181,23 @@ func main() {
 		}
 		
 	}
+}
+
+// readLines reads a whole file into memory
+// and returns a slice of its lines.
+func readLines(path string) ([]string, error) {
+  file, err := os.Open(path)
+  if err != nil {
+    return nil, err
+  }
+  defer file.Close()
+
+  var lines []string
+  scanner := bufio.NewScanner(file)
+  for scanner.Scan() {
+    lines = append(lines, scanner.Text())
+  }
+  return lines, scanner.Err()
 }
 
 func death(m Message, ws *websocket.Conn) {
@@ -233,6 +278,7 @@ func savemap(user map[string]string, channel map[string]string, location string)
 	for key, value := range user {
 		fmt.Fprintf(file, "%s %s\n", key, value)
 	}
+	file.Close()
 	
 	file, err = os.OpenFile(location+"channels", os.O_WRONLY | os.O_CREATE, 0664)
 		if err != nil {
@@ -241,6 +287,7 @@ func savemap(user map[string]string, channel map[string]string, location string)
 	for key, value := range channel {
 		fmt.Fprintf(file, "%s %s\n", key, value)
 	}
+	file.Close()
 }
 
 func findChannel(channel string, token string) (string) {
