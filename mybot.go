@@ -71,12 +71,15 @@ func main() {
 		
 		if m.Type == "message" && m.Text != "" {
 		
+			// identify user from ID to readable string
 			usr, ok := user_lookup[m.User]
 			if !ok {
 				usr = findUser(m.User, os.Args[1])
 				user_lookup[m.User] = usr
 			}
-			
+				
+			// identify channel from ID to readable string
+			// Private channels and DMs don't show up though :/
 			channel, ok := channel_lookup[m.Channel]
 			if !ok {
 				channel = findChannel(m.Channel, os.Args[1])
@@ -84,6 +87,8 @@ func main() {
 			
 			}
 			
+			// create a log file named after the channel
+			// and log the message 
 			file, err := os.OpenFile(rootloc+"logs/"+channel+".txt", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
 			if err != nil {
 				death(m, ws)
@@ -137,11 +142,14 @@ func main() {
 							postMessage(ws, m)
 						}(m)
 						// NOTE: the Message object is copied, this is intentional
-					} else if parts[1] == "wiki" && parts[2] == "challenge"	{
+					} 
+					// wiki challenge
+					else if parts[1] == "wiki" && parts[2] == "challenge"	{
 							go wikichall(m, ws)
-						
-					} else if parts[1] == "links" {
-						if parts[2] == "add" {
+					} 
+					// cool links
+					else if parts[1] == "links" {
+						if parts[2] == "add" && len(parts) == 4{
 							link := parts[3]
 							link = link[1:len(link)-1]
 							file, err := os.OpenFile(rootloc+"links", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
@@ -152,9 +160,10 @@ func main() {
 							file.Close()
 											
 						} else if parts[2] == "get" {
+							// reads in the links file and sends a randomly selected link
 							go func(m Message) {
 								links, err := readLines(rootloc+"links")
-								if err != nil {
+								if err != nil || len(links) == 0 {
 									return
 								}
 								index := rand.Intn(len(links))
@@ -200,22 +209,26 @@ func readLines(path string) ([]string, error) {
   return lines, scanner.Err()
 }
 
+// Send a death message to me if my error checking fails
 func death(m Message, ws *websocket.Conn) {
 	m.Channel = "D67GB3LJ0" // dm to me
 	m.Text = "Rip, I'm dead"
 	postMessage(ws, m)
 }
 
+// wikipedia random page struct
 type random struct {
 	ID int	`json:"id"`
 	NS int `json:"ns"`
 	Title string `json:"title"`
 }
 
+// wikipedia query
 type query struct {
 	Random[] random `json:"random"`
 }
 
+// more wiki structs
 type wikiresp struct {
 	
 	Query query `json:"query"`
@@ -242,6 +255,7 @@ type Channel struct {
 	Name	string `json:"name"`
 }
 
+// load the users and channels from the files
 func loadmap(user map[string]string, channel map[string]string) {
 	
 	file, err := os.OpenFile("usrs", os.O_RDONLY, 0664)
@@ -270,6 +284,7 @@ func loadmap(user map[string]string, channel map[string]string) {
 
 }
 
+// save the loaded maps to disk
 func savemap(user map[string]string, channel map[string]string, location string) {
 	file, err := os.OpenFile(location+"usrs", os.O_WRONLY | os.O_CREATE, 0664)
 		if err != nil {
@@ -290,6 +305,7 @@ func savemap(user map[string]string, channel map[string]string, location string)
 	file.Close()
 }
 
+// queries slack api for channel name
 func findChannel(channel string, token string) (string) {
 
 	
@@ -330,6 +346,7 @@ func findChannel(channel string, token string) (string) {
 
 }
 
+// queries slack api for user name from ID
 func findUser(usr string, token string) (string) {
 	url := fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", token, usr)
 	resp, err := http.Get(url)
@@ -363,6 +380,7 @@ func findUser(usr string, token string) (string) {
 
 
 
+// queries wiki api for 2 random pages
 func wikichall(m Message, ws *websocket.Conn) (Message) {
 	resp, err := http.Get("https://en.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=2")
 	if err != nil {
