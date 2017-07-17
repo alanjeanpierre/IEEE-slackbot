@@ -144,7 +144,15 @@ func main() {
 					switch cmd := parts[1]; cmd {
 					// admin commands
 					case "ban":
-						if elevated && len(parts) == 3 {
+						if !elevated {
+							go func (m Message) {
+								m.Text = "You aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png"
+								postMessage(ws, m)
+							}(m)
+							continue
+						}
+					
+						if len(parts) == 3 {
 							banned_user := parts[2]
 							file, err := os.OpenFile(rootloc+"banlist", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
 							if err != nil {
@@ -160,7 +168,15 @@ func main() {
 						}
 						
 					case "unban":
-						if elevated && len(parts) == 3 {
+						if !elevated {
+							go func (m Message) {
+								m.Text = "You aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png"
+								postMessage(ws, m)
+							}(m)
+							continue
+						}
+						
+						if len(parts) == 3 {
 							banned_user := parts[2]
 							if banlist[banned_user] != true {
 							
@@ -186,13 +202,19 @@ func main() {
 						}
 						
 					case "cleanup":
-						if elevated {
-							savemap(user_lookup, channel_lookup, rootloc)
+						if !elevated {
 							go func (m Message) {
-								m.Text = fmt.Sprintf("Ok, I saved everything")
+								m.Text = fmt.Sprintf("@%s you aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png", usr)
 								postMessage(ws, m)
 							}(m)
+							continue
 						}
+						savemap(user_lookup, channel_lookup, rootloc)
+						go func (m Message) {
+							m.Text = fmt.Sprintf("Ok, I saved everything")
+							postMessage(ws, m)
+						}(m)
+						
 					
 					// normal user commands
 					case "stock":
@@ -208,13 +230,21 @@ func main() {
 						
 					case "wiki": 
 						if len(parts) == 3 && parts[2] == "challenge" {
-							go wikichall(m, ws)
+							go func (m Message) {
+								wikileanks := wikichall()
+								if wikileanks == "" { // err from wiki api
+									m.Text = fmt.Sprintf("@%s wiki failed us. zip. nada. nil. Try again?", usr)									
+								} else {
+									m.Text = fmt.Sprintf("@%s %s", usr, wikileanks)
+								}
+								postMessage(ws, m)
+							}(m)
 						}
 						
 					case "help":
 						go func(m Message) {
-							m.Text = "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
-							//m.Text = fmt.Sprintf("You can view my readme here: %s\n", "https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md")
+							rdme := "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
+							m.Text = fmt.Sprintf("@%s you can view my readme here: %s\n", usr, rdme)
 							postMessage(ws, m)
 						}(m)
 						
@@ -223,11 +253,20 @@ func main() {
 							link := parts[3]
 							link = link[1:len(link)-1]
 							file, err := os.OpenFile(rootloc+"links", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
-							if err != nil {
+							if err != nil {						
+								go func(m Message) {
+									m.Text = fmt.Sprintf("@%s sorry, can't seem to access the links right now", usr)
+									postMessage(ws, m)
+								}(m)
 								continue
 							}
 							fmt.Fprintf(file, "%s\n", link)
 							file.Close()
+							
+							go func(m Message) {
+								m.Text = fmt.Sprintf("@%s thanks for the link!", usr)
+								postMessage(ws, m)
+							}(m)
 											
 						} else if len(parts) == 3 && parts[2] == "get" {
 							// reads in the links file and sends a randomly selected link
@@ -237,7 +276,7 @@ func main() {
 									return
 								}
 								index := rand.Intn(len(links))
-								m.Text = "Enjoy! " + links[index]
+								m.Text = fmt.Sprintf("@%s enjoy! %s", usr, links[index])
 								postMessage(ws, m)
 							} (m)
 						} else {
@@ -459,37 +498,35 @@ func findUser(usr string, token string) (string) {
 
 
 // queries wiki api for 2 random pages
-func wikichall(m Message, ws *websocket.Conn) (Message) {
+func wikichall() (string) {
 	resp, err := http.Get("https://en.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=2")
 	if err != nil {
-		log.Fatal(err)
+		return ""
 	}
 	if resp.StatusCode != 200 {
 		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
-		return m
+		return ""
 	}
 	
 	body, err := ioutil.ReadAll(resp.Body)
 	
 	resp.Body.Close()
 	if err != nil {
-		return m
+		return ""
 	}
 	
 	var response wikiresp 
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		fmt.Println("I died")
-		return m
+		return ""
 	}
 	
 	page1:=strings.Replace(response.Query.Random[0].Title, " ", "_", -1)
 	page2:=strings.Replace(response.Query.Random[1].Title, " ", "_", -1)
 	
-	m.Text = fmt.Sprintf("Try to get from https://en.wikipedia.org/wiki/%s to https://en.wikipedia.org/wiki/%s using only the links on the page!", page1, page2)
+	return fmt.Sprintf("try to get from https://en.wikipedia.org/wiki/%s to https://en.wikipedia.org/wiki/%s using only the links on the page!", page1, page2)
 
-	postMessage(ws, m)
-	return m
 
 }
 
