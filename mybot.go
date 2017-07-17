@@ -61,6 +61,8 @@ func main() {
 	
 	loadmap(user_lookup, channel_lookup, banlist)
 	
+	elevated := false
+	
 	for {
 		// read each incoming message
 		m, err := getMessage(ws)
@@ -125,6 +127,12 @@ func main() {
 				log.Fatal(err)
 			}
 			
+			if (usr == boss) {
+				elevated = true
+			} else {
+				elevated = false
+			}
+			
 			
 			// if bot is mentioned
 			if strings.HasPrefix(m.Text, "<@"+id+">") {
@@ -132,49 +140,86 @@ func main() {
 				// if so try to parse if
 				parts := strings.Fields(m.Text)
 				
-				// elevated priviledges?
-				if usr == boss {
-					if len(parts) == 2 && parts[1] == "cleanup"{
-						savemap(user_lookup, channel_lookup, rootloc)
-						continue
-					} else if len(parts) == 3 && parts[1] == "ban" {
-						banned_user := parts[2]
-						file, err := os.OpenFile(rootloc+"banlist", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
-						if err != nil {
-							continue
+				if len(parts) >= 2 {
+					switch cmd := parts[1]; cmd {
+					// admin commands
+					case "ban":
+						if elevated && len(parts) == 3 {
+							banned_user := parts[2]
+							file, err := os.OpenFile(rootloc+"banlist", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
+							if err != nil {
+								continue
+							}
+							fmt.Fprintf(file, "%s\n", banned_user)
+							file.Close()
+							banlist[banned_user] = true
+							go func (m Message) {
+								m.Text = fmt.Sprintf("Ok, I banned %s", banned_user)
+								postMessage(ws, m)
+							}(m)
 						}
-						fmt.Fprintf(file, "%s\n", banned_user)
-						file.Close()
-						banlist[banned_user] = true
-						continue
-					} else if len(parts) == 3 && parts[1] == "unban" {
-						banned_user := parts[2]
-						banlist[banned_user] = false
 						
-						blist, err := ioutil.ReadFile(rootloc+"banlist")
-						if err != nil {
-							continue
+					case "unban":
+						if elevated && len(parts) == 3 {
+							banned_user := parts[2]
+							if banlist[banned_user] != true {
+							
+								go func (m Message) {
+									m.Text = fmt.Sprintf("%s is not banned", banned_user)
+									postMessage(ws, m)
+								}(m)
+								continue
+							}
+							
+							banlist[banned_user] = false
+							
+							blist, err := ioutil.ReadFile(rootloc+"banlist")
+							if err != nil {
+								continue
+							}
+							newblist := bytes.Replace(blist, []byte(banned_user+"\n"), []byte(""), 1)
+							err = ioutil.WriteFile(rootloc+"banlist", newblist, 0664)
+							go func (m Message) {
+								m.Text = fmt.Sprintf("Ok, I unbanned %s", banned_user)
+								postMessage(ws, m)
+							}(m)
 						}
-						newblist := bytes.Replace(blist, []byte(banned_user+"\n"), []byte(""), 1)
-						err = ioutil.WriteFile(rootloc+"banlist", newblist, 0664)
-						continue
 						
-					}
-				}
-				if len(parts) >= 3 {
+					case "cleanup":
+						if elevated {
+							savemap(user_lookup, channel_lookup, rootloc)
+							go func (m Message) {
+								m.Text = fmt.Sprintf("Ok, I saved everything")
+								postMessage(ws, m)
+							}(m)
+						}
 					
-					// stock
-					if parts[1] == "stock" {
-						// looks good, get the quote and reply with the result
+					// normal user commands
+					case "stock":
+						if len(parts) == 3 {
+							// looks good, get the quote and reply with the result
+							go func(m Message) {
+								m.Text = getQuote(parts[2])
+								postMessage(ws, m)
+							}(m)
+							// NOTE: the Message object is copied, this is intentional
+							
+						}
+						
+					case "wiki": 
+						if len(parts) == 3 && parts[2] == "challenge" {
+							go wikichall(m, ws)
+						}
+						
+					case "help":
 						go func(m Message) {
-							m.Text = getQuote(parts[2])
+							m.Text = "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
+							//m.Text = fmt.Sprintf("You can view my readme here: %s\n", "https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md")
 							postMessage(ws, m)
 						}(m)
-						// NOTE: the Message object is copied, this is intentional
-					} else if parts[1] == "wiki" && parts[2] == "challenge"	{ // wiki challenge
-							go wikichall(m, ws)
-					} else if parts[1] == "links" { // cool links
-						if parts[2] == "add" && len(parts) == 4{
+						
+					case "links":
+						if len(parts) == 4 && parts[2] == "add" {
 							link := parts[3]
 							link = link[1:len(link)-1]
 							file, err := os.OpenFile(rootloc+"links", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
@@ -184,7 +229,7 @@ func main() {
 							fmt.Fprintf(file, "%s\n", link)
 							file.Close()
 											
-						} else if parts[2] == "get" {
+						} else if len(parts) == 3 && parts[2] == "get" {
 							// reads in the links file and sends a randomly selected link
 							go func(m Message) {
 								links, err := readLines(rootloc+"links")
@@ -200,32 +245,13 @@ func main() {
 							m.Text = fmt.Sprintf("sorry, that does not compute. @onee-sama links add|get\n")
 							postMessage(ws, m)
 						}
-						
-					} else {
-						// huh?
+					default: 
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
 					}
-				} else if len(parts) == 2 {
-					if parts[1] == "help" {
-						go func(m Message) {
-							m.Text = "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
-							//m.Text = fmt.Sprintf("You can view my readme here: %s\n", "https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md")
-							postMessage(ws, m)
-						}(m)
-					} else {
-						// huh?
-						m.Text = fmt.Sprintf("sorry, that 2 argument command does not compute\n")
-						postMessage(ws, m)
-					}
-				}else {
-					// huh?
-					m.Text = fmt.Sprintf("sorry, that does not compute\n")
-					postMessage(ws, m)
 				}
 			}
 		}
-		
 	}
 }
 
