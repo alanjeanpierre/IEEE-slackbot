@@ -39,6 +39,7 @@ import (
 	"golang.org/x/net/websocket"
 	"bufio"
 	"math/rand"
+	"bytes"
 	)
 
 func main() {
@@ -54,11 +55,11 @@ func main() {
 	boss := os.Args[2]
 	rootloc := os.Args[3]
 
-	//var lookup map[string]string
 	user_lookup := make(map[string]string)
 	channel_lookup := make(map[string]string)
+	banlist := make(map[string]bool)
 	
-	loadmap(user_lookup, channel_lookup)
+	loadmap(user_lookup, channel_lookup, banlist)
 	
 	for {
 		// read each incoming message
@@ -76,6 +77,11 @@ func main() {
 			if !ok {
 				usr = findUser(m.User, os.Args[1])
 				user_lookup[m.User] = usr
+			}
+			
+			bannedyn, ok := banlist[usr]
+			if bannedyn == true && usr != boss {
+				continue
 			}
 				
 			// identify channel from ID to readable string
@@ -123,15 +129,38 @@ func main() {
 			// if bot is mentioned
 			if strings.HasPrefix(m.Text, "<@"+id+">") {
 			
-				// elevated priviledges?
-				if usr == boss {
-					if m.Text == "<@"+id+"> cleanup" {
-						savemap(user_lookup, channel_lookup, rootloc)
-						continue
-					}
-				}
 				// if so try to parse if
 				parts := strings.Fields(m.Text)
+				
+				// elevated priviledges?
+				if usr == boss {
+					if len(parts) == 2 && parts[1] == "cleanup"{
+						savemap(user_lookup, channel_lookup, rootloc)
+						continue
+					} else if len(parts) == 3 && parts[1] == "ban" {
+						banned_user := parts[2]
+						file, err := os.OpenFile(rootloc+"banlist", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0664)
+						if err != nil {
+							continue
+						}
+						fmt.Fprintf(file, "%s\n", banned_user)
+						file.Close()
+						banlist[banned_user] = true
+						continue
+					} else if len(parts) == 3 && parts[1] == "unban" {
+						banned_user := parts[2]
+						banlist[banned_user] = false
+						
+						blist, err := ioutil.ReadFile(rootloc+"banlist")
+						if err != nil {
+							continue
+						}
+						newblist := bytes.Replace(blist, []byte(banned_user+"\n"), []byte(""), 1)
+						err = ioutil.WriteFile(rootloc+"banlist", newblist, 0664)
+						continue
+						
+					}
+				}
 				if len(parts) >= 3 {
 					
 					// stock
@@ -142,13 +171,9 @@ func main() {
 							postMessage(ws, m)
 						}(m)
 						// NOTE: the Message object is copied, this is intentional
-					} 
-					// wiki challenge
-					else if parts[1] == "wiki" && parts[2] == "challenge"	{
+					} else if parts[1] == "wiki" && parts[2] == "challenge"	{ // wiki challenge
 							go wikichall(m, ws)
-					} 
-					// cool links
-					else if parts[1] == "links" {
+					} else if parts[1] == "links" { // cool links
 						if parts[2] == "add" && len(parts) == 4{
 							link := parts[3]
 							link = link[1:len(link)-1]
@@ -181,7 +206,19 @@ func main() {
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
 					}
-				} else {
+				} else if len(parts) == 2 {
+					if parts[1] == "help" {
+						go func(m Message) {
+							m.Text = "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
+							//m.Text = fmt.Sprintf("You can view my readme here: %s\n", "https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md")
+							postMessage(ws, m)
+						}(m)
+					} else {
+						// huh?
+						m.Text = fmt.Sprintf("sorry, that 2 argument command does not compute\n")
+						postMessage(ws, m)
+					}
+				}else {
 					// huh?
 					m.Text = fmt.Sprintf("sorry, that does not compute\n")
 					postMessage(ws, m)
@@ -256,7 +293,7 @@ type Channel struct {
 }
 
 // load the users and channels from the files
-func loadmap(user map[string]string, channel map[string]string) {
+func loadmap(user map[string]string, channel map[string]string, banlist map[string]bool) {
 	
 	file, err := os.OpenFile("usrs", os.O_RDONLY, 0664)
 		if err == nil {
@@ -281,6 +318,21 @@ func loadmap(user map[string]string, channel map[string]string) {
 				channel[channels[0]] = channels[1]
 			}
 		}
+	
+	file, err = os.OpenFile("banlist", os.O_RDONLY, 0664)
+		if err == nil {
+		
+			scanner := bufio.NewScanner(file)
+			
+			for scanner.Scan() {
+				
+				banned := scanner.Text()
+				banlist[banned] = true
+			}
+		}
+	
+	
+
 
 }
 
