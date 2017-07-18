@@ -54,6 +54,7 @@ func main() {
 	
 	boss := os.Args[2]
 	rootloc := os.Args[3]
+	token := os.Args[1]
 
 	user_lookup := make(map[string]string)
 	channel_lookup := make(map[string]string)
@@ -107,13 +108,7 @@ func main() {
 				continue
 			}
 			
-			tms, err := strconv.ParseInt(times[0], 10, 64)
-			if err != nil {
-				death(m, ws)
-				log.Fatal(err)
-			}
-			
-			tns, err := strconv.ParseInt(times[1], 10, 64)
+			tms, tns, err := getTime(times[0], times[1])
 			if err != nil {
 				death(m, ws)
 				log.Fatal(err)
@@ -127,12 +122,24 @@ func main() {
 				log.Fatal(err)
 			}
 			
-			if (usr == boss) {
-				elevated = true
-			} else {
-				elevated = false
-			}
+			elevated = (usr == boss)
 			
+			text := strings.ToLower(m.Text)
+			
+			// shit posting
+			go func(m Message) {
+				if strings.Contains(text, "doing it") {
+					go postReaction(token, m.Channel, m.TS, "doing_it")
+				}
+				
+				if strings.Contains(text, "fucked up") {
+					go postReaction(token, m.Channel, m.TS, "shinji-sauce")
+				}
+				
+				if strings.Contains(text, "one") {
+					go postReaction(token, m.Channel, m.TS, "wanwanwan")
+				}
+			} (m)
 			
 			// if bot is mentioned
 			if strings.HasPrefix(m.Text, "<@"+id+">") {
@@ -244,7 +251,7 @@ func main() {
 					case "help":
 						go func(m Message) {
 							rdme := "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
-							m.Text = fmt.Sprintf("@%s you can view my readme here: %s\n", usr, rdme)
+							m.Text = fmt.Sprintf("@%s %s\n", usr, rdme)
 							postMessage(ws, m)
 						}(m)
 						
@@ -292,6 +299,37 @@ func main() {
 			}
 		}
 	}
+}
+
+func getTime(tms, tns string) (int64, int64, error) {
+
+			millis, err := strconv.ParseInt(tms, 10, 64)
+			if err != nil {
+				return 0,0,err
+			}
+			
+			nanos, err := strconv.ParseInt(tns, 10, 64)
+			if err != nil {
+				return 0,0,err
+			}
+			
+			return millis, nanos, nil
+
+}
+
+func postReaction(token string, channel string, timestamp string, reaction string) {
+
+	url := fmt.Sprintf("https://slack.com/api/reactions.add?token=%s&name=%s&channel=%s&timestamp=%s", token, reaction, channel, timestamp)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+		fmt.Println(err)
+	}
+	
+
 }
 
 // readLines reads a whole file into memory
