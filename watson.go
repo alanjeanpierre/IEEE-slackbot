@@ -24,7 +24,7 @@ type Watson struct {
         } `json:"document_tone"`
 }
 
-
+//https://watson-api-explorer.mybluemix.net/apis/tone-analyzer-v3#!/tone/GetTone
 func watsonToneAnalyzerQuery(text, tones string) (d Watson) {
 	
 	

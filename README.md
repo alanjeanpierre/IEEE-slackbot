@@ -40,6 +40,12 @@ The bot will return a random link from its list of links in the /root/directory/
 `@bot-name links add link-to-add`
 Adds a link to the /root/directory/links file.
 
+`@bot-name watson parameters,parameters text`
+Queries [Watson Tone Analyzer](https://watson-api-explorer.mybluemix.net/apis/tone-analyzer-v3#!/tone/GetTone)
+
+`@bot-name watson help`
+Prints help for using Watson's tone analyzer
+
 ## Administrative use
 `@bot-name cleanup`
 The admin user can request the bot to save its user and channel translation
