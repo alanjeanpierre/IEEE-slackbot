@@ -99,6 +99,22 @@ type Message struct {
 	TS		string `json:"ts"`
 }
 
+type responseRTM struct {
+	Type string					`json:"type"`
+	//X map[string]interface{}	`json:"-"`
+}
+
+// returns the raw bytes of the JSON to decode into whatever structure slack wants
+func getRTM (ws *websocket.Conn) (r responseRTM, b []byte, err error) {
+	err = websocket.Message.Receive(ws, &b)
+	if err := json.Unmarshal(b, &r); err != nil {
+		log.Println(b)
+		panic(err)
+	}
+	
+	return
+}
+
 func getMessage(ws *websocket.Conn) (m Message, err error) {
 	err = websocket.JSON.Receive(ws, &m)
 	return

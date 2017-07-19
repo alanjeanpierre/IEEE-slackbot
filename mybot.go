@@ -65,15 +65,23 @@ func main() {
 	elevated := false
 	
 	for {
-		// read each incoming message
-		m, err := getMessage(ws)
+	
+		r, b, err := getRTM(ws)
 		if err != nil {
-			death(m, ws)
-			log.Fatal(err)
+			//death(m, ws)
+			log.Println("Err on getting")
+			log.Println(err)
+			continue
 		}
-
 		
-		if m.Type == "message" && m.Text != "" {
+		
+		if r.Type == "message" {
+			var m Message
+			err:= json.Unmarshal(b, &m)
+			//err := json.Unmarshal(r.X, &m)
+			if err != nil {
+				panic(err)
+			}
 		
 			// identify user from ID to readable string
 			usr, ok := user_lookup[m.User]
@@ -300,6 +308,7 @@ func main() {
 		}
 	}
 }
+
 
 func getTime(tms, tns string) (int64, int64, error) {
 
