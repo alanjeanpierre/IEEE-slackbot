@@ -47,6 +47,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user /root/working/directory \n")
 		os.Exit(1)
 	}
+	
+	uptime := time.Now()
+	var numOfMessages uint64 = 0
 
 	// start a websocket-based Real Time API session
 	ws, id := slackConnect(os.Args[1])
@@ -76,6 +79,7 @@ func main() {
 		
 		
 		if r.Type == "message" {
+			numOfMessages = numOfMessages + 1
 			var m Message
 			err:= json.Unmarshal(b, &m)
 			//err := json.Unmarshal(r.X, &m)
@@ -299,6 +303,11 @@ func main() {
 							m.Text = fmt.Sprintf("sorry, that does not compute. @onee-sama links add|get\n")
 							postMessage(ws, m)
 						}
+					case "status":
+						go func(m Message) {
+							m.Text = fmt.Sprintf("@%s I have been running for %v and have read %d messages", usr, time.Since(uptime), numOfMessages)
+							postMessage(ws, m)
+						} (m)
 					default: 
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)

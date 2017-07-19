@@ -25,6 +25,9 @@ This bot responds to a few commands
 `@bot-name help`
 Will link to the readme on github
 
+`@bot-name status`
+Returns uptime and number of messages read
+
 `@bot-name stock stock-to-look-up` 
 Will lookup through Yahoo finance what the current stock is
 
