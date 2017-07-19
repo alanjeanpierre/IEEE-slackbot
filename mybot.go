@@ -136,10 +136,12 @@ func main() {
 			
 			elevated = (usr == boss)
 			
-			text := strings.ToLower(m.Text)
 			
 			// shit posting
 			go func(m Message) {
+				
+				text := strings.ToLower(m.Text)
+				
 				if strings.Contains(text, "doing it") {
 					go postReaction(token, m.Channel, m.TS, "doing_it")
 				}
@@ -160,7 +162,7 @@ func main() {
 				parts := strings.Fields(m.Text)
 				
 				if len(parts) >= 2 {
-					switch cmd := parts[1]; cmd {
+					switch cmd := strings.ToLower(parts[1]); cmd {
 					// admin commands
 					case "ban":
 						if !elevated {
@@ -303,11 +305,30 @@ func main() {
 							m.Text = fmt.Sprintf("sorry, that does not compute. @onee-sama links add|get\n")
 							postMessage(ws, m)
 						}
+						
 					case "status":
 						go func(m Message) {
 							m.Text = fmt.Sprintf("@%s I have been running for %v and have read %d messages", usr, time.Since(uptime), numOfMessages)
 							postMessage(ws, m)
 						} (m)
+						
+					case "watson": 
+						if len(parts) > 4 {
+							text := m.Text[3:]
+							go func(m Message) {
+								m.Text = fmt.Sprintf("@%s\n %s", usr, watsonToneAnalyzer(text, parts[2]))
+								postMessage(ws, m)
+							} (m)
+						} else if len(parts) == 3 && parts[2] == "help" {
+							go func(m Message) {
+								m.Text = fmt.Sprintf("@%s call @onee-sama watson tones sentence\nAvailable tones are emotion, language, social and those wanted should be written like emotion,language,social", usr)
+								postMessage(ws, m)
+							} (m)
+						} else {
+							m.Text = fmt.Sprintf("sorry, that does not compute. Try @onee-sama watson help\n")
+							postMessage(ws, m)
+						}
+					
 					default: 
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
