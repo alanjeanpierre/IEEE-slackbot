@@ -431,6 +431,15 @@ type Channel struct {
 	Name string `json:"name"`
 }
 
+// SlackGroupObject web api response for groups (private channels)
+type SlackGroupObject struct {
+	Ok    bool `json:"ok"`
+	Group struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"group"`
+}
+
 // load the users and channels from the files
 func loadmap(user map[string]string, channel map[string]string, banlist map[string]bool) {
 
@@ -526,11 +535,45 @@ func findChannel(channel string, token string) string {
 
 	if response.Ok {
 		return response.Channel.Name
-	} 
-	// else 
+	}
+	// else its private
+	return findGroup(channel, token)
+}
+
+func findGroup(channel, token string) string {
+	url := fmt.Sprintf("https://slack.com/api/groups.info?token=%s&channel=%s", token, channel)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+		fmt.Println(err)
+		return "idk"
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+
+	resp.Body.Close()
+	if err != nil {
+
+		fmt.Println(err)
+		return "idk"
+	}
+
+	var response SlackGroupObject
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Println("I died - find channel")
+		fmt.Println(err)
+		return "idk"
+	}
+
+	if response.Ok {
+		return response.Group.Name
+	}
+	// else must be a single DM
 	return "Private - " + channel
-
-
 }
 
 // queries slack api for user name from ID
