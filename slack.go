@@ -42,12 +42,12 @@ import (
 type responseRtmStart struct {
 	Ok    bool         `json:"ok"`
 	Error string       `json:"error"`
-	Url   string       `json:"url"`
+	URL   string       `json:"url"`
 	Self  responseSelf `json:"self"`
 }
 
 type responseSelf struct {
-	Id string `json:"id"`
+	ID string `json:"id"`
 }
 
 // slackStart does a rtm.start, and returns a websocket URL and user ID. The
@@ -67,9 +67,7 @@ func slackStart(token string) (wsurl, id string, err error) {
 	if err != nil {
 		return
 	}
-	
-	
-		
+
 	var respObj responseRtmStart
 	err = json.Unmarshal(body, &respObj)
 	if err != nil {
@@ -81,37 +79,37 @@ func slackStart(token string) (wsurl, id string, err error) {
 		return
 	}
 
-	wsurl = respObj.Url
-	id = respObj.Self.Id
+	wsurl = respObj.URL
+	id = respObj.Self.ID
 	return
 }
 
+// Message object
 // These are the messages read off and written into the websocket. Since this
-// struct serves as both read and write, we include the "Id" field which is
+// struct serves as both read and write, we include the "ID" field which is
 // required only for writing.
-
 type Message struct {
-	Id      uint64 `json:"id"`
-	User	string `json:"user"`
+	ID      uint64 `json:"id"`
+	User    string `json:"user"`
 	Type    string `json:"type"`
 	Channel string `json:"channel"`
 	Text    string `json:"text"`
-	TS		string `json:"ts"`
+	TS      string `json:"ts"`
 }
 
 type responseRTM struct {
-	Type string					`json:"type"`
+	Type string `json:"type"`
 	//X map[string]interface{}	`json:"-"`
 }
 
 // returns the raw bytes of the JSON to decode into whatever structure slack wants
-func getRTM (ws *websocket.Conn) (r responseRTM, b []byte, err error) {
+func getRTM(ws *websocket.Conn) (r responseRTM, b []byte, err error) {
 	err = websocket.Message.Receive(ws, &b)
 	if err := json.Unmarshal(b, &r); err != nil {
 		log.Println(b)
 		panic(err)
 	}
-	
+
 	return
 }
 
@@ -123,9 +121,9 @@ func getMessage(ws *websocket.Conn) (m Message, err error) {
 var counter uint64
 
 func postMessage(ws *websocket.Conn, m Message) error {
-	m.Id = atomic.AddUint64(&counter, 1)
+	m.ID = atomic.AddUint64(&counter, 1)
 	return websocket.JSON.Send(ws, m)
-}
+} 
 
 // Starts a websocket-based Real Time API session and return the websocket
 // and the ID of the (bot-)user whom the token belongs to.
