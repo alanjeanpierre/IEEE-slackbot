@@ -63,7 +63,7 @@ func main() {
 	channelLookup := make(map[string]string)
 	banlist := make(map[string]bool)
 
-	loadmap(userLookup, channelLookup, banlist)
+	loadmap(userLookup, channelLookup, banlist, rootloc)
 
 	elevated := false
 
@@ -441,9 +441,9 @@ type SlackGroupObject struct {
 }
 
 // load the users and channels from the files
-func loadmap(user map[string]string, channel map[string]string, banlist map[string]bool) {
+func loadmap(user map[string]string, channel map[string]string, banlist map[string]bool, rootloc string) {
 
-	file, err := os.OpenFile("usrs", os.O_RDONLY, 0664)
+	file, err := os.OpenFile(rootloc + "usrs", os.O_RDONLY, 0664)
 	if err == nil {
 
 		scanner := bufio.NewScanner(file)
@@ -455,7 +455,7 @@ func loadmap(user map[string]string, channel map[string]string, banlist map[stri
 		}
 	}
 
-	file, err = os.OpenFile("channels", os.O_RDONLY, 0664)
+	file, err = os.OpenFile(rootloc + "channels", os.O_RDONLY, 0664)
 	if err == nil {
 
 		scanner := bufio.NewScanner(file)
@@ -467,7 +467,7 @@ func loadmap(user map[string]string, channel map[string]string, banlist map[stri
 		}
 	}
 
-	file, err = os.OpenFile("banlist", os.O_RDONLY, 0664)
+	file, err = os.OpenFile(rootloc + "banlist", os.O_RDONLY, 0664)
 	if err == nil {
 
 		scanner := bufio.NewScanner(file)
