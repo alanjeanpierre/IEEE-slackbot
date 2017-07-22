@@ -326,6 +326,23 @@ func main() {
 							postMessage(ws, m)
 						}
 
+					case "poll":
+						if len(parts) >= 3 {
+							go func(m Message) {
+								num := []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "keycap_ten"}
+								p := strings.Fields(m.Text)
+								n, err := strconv.Atoi(p[2])
+								if err != nil || n > 10 {
+									m.Text = fmt.Sprintf("I recieved an invalid poll")
+									postMessage(ws, m)
+									return
+								}
+								for i := 1; i <=n; i++ {
+									postReaction(token, m.Channel, m.TS, num[i])
+								}
+								
+							} (m)
+						}
 					default:
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
