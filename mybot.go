@@ -148,8 +148,13 @@ func main() {
 					go postReaction(token, m.Channel, m.TS, "shinji-sauce")
 				}
 
-				if strings.Contains(text, "one") {
+				// should fix a lot of false positives, but keep onee-sama triggering
+				if strings.Contains(text, " one") {
 					go postReaction(token, m.Channel, m.TS, "wanwanwan")
+				}
+				
+				if strings.Contains(text, "eh") {
+					go postReaction(token, m.Channel, m.TS, "flag-ca")
 				}
 			}(m)
 
