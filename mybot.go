@@ -451,7 +451,7 @@ func loadmap(user map[string]string, channel map[string]string, banlist map[stri
 		for scanner.Scan() {
 
 			users := strings.Fields(scanner.Text())
-			user[users[0]] = users[1:]
+			user[users[0]] = strings.Join(users[1:], " ")
 		}
 	}
 
@@ -463,7 +463,7 @@ func loadmap(user map[string]string, channel map[string]string, banlist map[stri
 		for scanner.Scan() {
 
 			channels := strings.Fields(scanner.Text())
-			channel[channels[0]] = channels[1:]
+			channel[channels[0]] = strings.Join(channels[1:], " ")
 		}
 	}
 
