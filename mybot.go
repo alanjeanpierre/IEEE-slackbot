@@ -348,6 +348,28 @@ func main() {
 								
 							} (m)
 						}
+					case "schedule":
+						if len(parts) > 3 {
+							go func(m Message) {
+								free := parts[2] == "free"
+								text := strings.ToLower(strings.TrimPrefix(m.Text, strings.Join(parts[:3], " ") + " "))
+								err = readSchedule(text, free, rootloc, m.User)
+								if err != nil {
+									m.Text = "Error, bad scheduling"
+									postMessage(ws, m)
+									return
+								}
+								m.Text = "Thanks, got your schedule"
+								postMessage(ws, m)
+								
+							}(m)
+						}
+					case "meeting" :
+						go func(M Message) {
+							day, time, n := bestTime(rootloc)
+							m.Text = fmt.Sprintf("@%s the best time to meet is %s at %d:00, %d people should be in attendance", usr, day, time, n)
+							postMessage(ws, m)
+						} (m)
 					default:
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
 						postMessage(ws, m)
