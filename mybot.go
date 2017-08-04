@@ -56,7 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("mybot ready, ^C exits")
+	log.Println("mybot ready, ^C exits")
 
 	boss := os.Args[2]
 	rootloc := os.Args[3]
@@ -69,16 +69,31 @@ func main() {
 	loadmap(userLookup, channelLookup, banlist, rootloc)
 
 	elevated := false
+	
+	// heartbeat 10s interval
+	go func(ws **websocket.Conn) {
+		for {
+			m := Message{ID : 1234, Type : "ping"}
+			//log.Println("Ping")
+			postMessage(*ws, m)
+			time.Sleep(10 * time.Second)
+		}
+	}(&ws)
 
 	for {
 
+		err = ws.SetReadDeadline(time.Now().Add(30*time.Second))
+		if err != nil {
+			log.Fatal(err)
+		}
 		b, err := getRTM(ws)
 		if err != nil {
+			log.Println(err)
 			// connection failure
 			// try reconnecting..?
 			log.Println("Connection failure, attempting to reconnect on 5s intervals...")
 			i := 0
-			for i = 1; i <= 1; i++ {
+			for i = 1; i <= 5; i++ {
 				log.Printf("Attempt %d... \n", i)
 				var err error
 				ws, id, err = slackConnect(os.Args[1])
@@ -90,7 +105,7 @@ func main() {
 				}
 			}
 			
-			if i > 1 {
+			if i > 5 {
 				log.Fatal("Couldn't reconnect. Exiting")
 			} else {
 				log.Println("Successfully reconnected")
@@ -404,6 +419,10 @@ func main() {
 					}
 				}
 			}
+		} else if r.Type == "pong" {
+			//log.Println("Pong")
+			// maybe add some latency checking? idk
+			continue
 		}
 	}
 }
