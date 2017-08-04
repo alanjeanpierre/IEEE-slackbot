@@ -29,7 +29,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
+	//"log"
 	"net/http"
 	"sync/atomic"
 
@@ -103,13 +103,16 @@ type responseRTM struct {
 }
 
 // returns the raw bytes of the JSON to decode into whatever structure slack wants
-func getRTM(ws *websocket.Conn) (r responseRTM, b []byte, err error) {
+func getRTM(ws *websocket.Conn) (b []byte, err error) {
 	err = websocket.Message.Receive(ws, &b)
-	if err := json.Unmarshal(b, &r); err != nil {
-		log.Println(b)
-		panic(err)
+	if err != nil {
+		return
 	}
+	return
+}
 
+func getJSON(b []byte) (r responseRTM, err error) {
+	err = json.Unmarshal(b, &r)
 	return
 }
 
@@ -127,16 +130,16 @@ func postMessage(ws *websocket.Conn, m Message) error {
 
 // Starts a websocket-based Real Time API session and return the websocket
 // and the ID of the (bot-)user whom the token belongs to.
-func slackConnect(token string) (*websocket.Conn, string) {
+func slackConnect(token string) (ws *websocket.Conn, id string, err error) {
 	wsurl, id, err := slackStart(token)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 
-	ws, err := websocket.Dial(wsurl, "", "https://api.slack.com/")
+	ws, err = websocket.Dial(wsurl, "", "https://api.slack.com/")
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 
-	return ws, id
+	return
 }

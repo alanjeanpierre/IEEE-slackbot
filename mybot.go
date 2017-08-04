@@ -52,7 +52,10 @@ func main() {
 	var numOfMessages uint64
 
 	// start a websocket-based Real Time API session
-	ws, id := slackConnect(os.Args[1])
+	ws, id, err := slackConnect(os.Args[1])
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Println("mybot ready, ^C exits")
 
 	boss := os.Args[2]
@@ -69,11 +72,36 @@ func main() {
 
 	for {
 
-		r, b, err := getRTM(ws)
+		b, err := getRTM(ws)
 		if err != nil {
-			//death(m, ws)
-			log.Println("Err on getting")
-			log.Println(err)
+			// connection failure
+			// try reconnecting..?
+			log.Println("Connection failure, attempting to reconnect on 5s intervals...")
+			i := 0
+			for i = 1; i <= 1; i++ {
+				log.Printf("Attempt %d... \n", i)
+				var err error
+				ws, id, err = slackConnect(os.Args[1])
+				if err != nil {
+					log.Printf("Attempt %d failure. Sleeping 5 seconds\n", i)
+					time.Sleep(5 * time.Second)
+				} else {
+					break
+				}
+			}
+			
+			if i > 1 {
+				log.Fatal("Couldn't reconnect. Exiting")
+			} else {
+				log.Println("Successfully reconnected")
+				continue // from message read loop
+			}
+			
+		}
+		
+		r, err := getJSON(b) 
+		if err != nil {
+			// bad json?
 			continue
 		}
 
