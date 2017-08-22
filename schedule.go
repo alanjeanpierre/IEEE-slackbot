@@ -19,7 +19,7 @@ func readSchedule(input string, free bool, rootloc string, id string) (err error
 	var spec int = 0;
 	//var d2i map[string]int{'m' : 0, 't': 1, 'w': 2, 'r': 3, 'f': 4}
 	
-	var schedule [11][5]int
+	var schedule [10][5]int
 	if free {
 		spec = 1
 	} else {
@@ -64,7 +64,7 @@ func readSchedule(input string, free bool, rootloc string, id string) (err error
 	return saveSchedule(schedule, rootloc, id)
 }
 
-func saveSchedule(schedule [11][5]int, rootloc string, id string) (err error) {
+func saveSchedule(schedule [10][5]int, rootloc string, id string) (err error) {
 	
 	file, err := os.OpenFile(rootloc + id + ".sched", os.O_WRONLY | os.O_CREATE, 0664)
 	if err != nil {
@@ -82,40 +82,50 @@ func saveSchedule(schedule [11][5]int, rootloc string, id string) (err error) {
 	return
 }
 
-func bestTime(rootloc string) (day string, time int, num int) {
+func sumTimes(rootloc string) (availables [10][5] int) {
 	files, err := ioutil.ReadDir(rootloc)
 	if err != nil {
 		return
 	}
-
-	var availables [11][5]int
-	var max int
-	var maxj int
-	var maxi int
-	i2day := []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}
-	
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".sched") {
 			sched := loadSchedule(rootloc + file.Name())
 			for i, row := range sched {
 				for j, column := range row {
 					availables[j][i] += column
-					if (availables[j][i] > max) {
-						maxj = j
-						maxi = i
-						max = availables[j][i]
-					}
 				}
 			}
 		}
 	}
 	
-	return i2day[maxi], maxj + 8, max
+	return
+}
+
+func bestTime(rootloc string) (day string, time int, num int) {
+
+
+	availables := sumTimes(rootloc)
+	var max int
+	var maxj int
+	var maxi int
+	i2day := []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}
+	
+	for i, row := range availables {
+		for j, column := range row {			
+			if (column > max) {
+					maxj = j
+					maxi = i
+					max = column
+				}
+		}
+	}
+	
+	return i2day[maxj], maxi + 8, max
 	
 	
 }
 
-func loadSchedule(path string) (schedule [5][11]int) {
+func loadSchedule(path string) (schedule [5][10]int) {
 	file, err := os.OpenFile(path, os.O_RDONLY, 0664)
 	if err != nil {
 		return

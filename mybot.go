@@ -408,10 +408,35 @@ func main() {
 							}(m)
 						}
 					case "meeting" :
-						go func(M Message) {
+						go func(m Message) {
 							day, time, n := bestTime(rootloc)
 							m.Text = fmt.Sprintf("@%s the best time to meet is %s at %d:00, %d people should be in attendance", usr, day, time, n)
 							postMessage(ws, m)
+						} (m)
+					case "meetings" :
+						go func(m Message) {
+							var buffer bytes.Buffer
+							availables := sumTimes(rootloc)
+							days := []string{"Mon", "Tue", "Wed", "Thu", "Fri"}
+							times := []string{"8:00AM", "9:00AM", "10:00AM", "11:00AM", "12:00PM", "1:00PM", "2:00PM", "3:00PM", "4:00PM", "5:00PM"}
+							
+							buffer.WriteString("```\n\n")
+							buffer.WriteString(fmt.Sprintf("%10s", ""))
+							for _, day := range days {
+								buffer.WriteString(fmt.Sprintf("%5s", day))
+							}
+							
+							for j, rows := range availables {
+								buffer.WriteString(fmt.Sprintf("\n%10s", times[j]))
+								for _, column := range rows {
+									buffer.WriteString(fmt.Sprintf("%5d", column))
+								}
+							}
+							buffer.WriteString("\n```")
+							
+							m.Text = buffer.String()
+							postMessage(ws, m)
+							
 						} (m)
 					default:
 						m.Text = fmt.Sprintf("sorry, that does not compute\n")
