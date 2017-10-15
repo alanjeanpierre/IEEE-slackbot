@@ -97,6 +97,21 @@ type Message struct {
 	TS      string `json:"ts"`
 }
 
+type File_Shared struct {
+    Type string `json:"type"`
+    File_ID string `json:"file_id"`
+}
+
+type Files_Info struct {
+    OK bool `json:"ok"`
+    File struct {
+        ID string `json:"id"`
+        Name string `json:"name"`
+        Title string `json:"title"`
+        URL string `json:"url_private"`
+    } `json:"file"`
+}
+
 type responseRTM struct {
 	Type string `json:"type"`
 	//X map[string]interface{}	`json:"-"`

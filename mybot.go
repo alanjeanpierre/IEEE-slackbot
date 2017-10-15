@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"golang.org/x/net/websocket"
+    "io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -448,7 +449,88 @@ func main() {
 			//log.Println("Pong")
 			// maybe add some latency checking? idk
 			continue
-		}
+		} else if r.Type == "file_shared" {
+        
+            //fmt.Println("1")
+            
+			var file_shared File_Shared
+			err := json.Unmarshal(b, &file_shared)
+			if err != nil {
+				panic(err)
+			}
+            
+            
+            url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", token, file_shared.File_ID)
+            resp, err := http.Get(url)
+            if err != nil {
+                continue
+            }
+            if resp.StatusCode != 200 {
+                continue
+            }
+            //fmt.Println("2")
+            
+            body, err := ioutil.ReadAll(resp.Body)
+            resp.Body.Close()
+            if err != nil {
+                fmt.Println(err)
+                continue
+            }
+
+            //fmt.Println("3")
+            var file Files_Info
+            err = json.Unmarshal(body, &file)
+            if err != nil || !file.OK {
+                fmt.Println("I died - filing")
+                fmt.Println(err)
+                continue
+            }
+            
+            //fmt.Println("4")
+            //fmt.Println(file.File.Title)
+            //fmt.Println(userLookup[id])
+            if file.File.Title == "@" + userLookup[id] {
+            
+                //fmt.Println("5")
+                out, err := os.Create(rootloc + "files/" + file.File.Name)
+                if err != nil {
+                    continue
+                }
+                //fmt.Println("6")
+                //fmt.Println(file.File.URL)
+                client := &http.Client{}
+                req, err:= http.NewRequest("GET", file.File.URL, nil)
+                if err != nil {
+                    continue
+                }
+                
+                //fmt.Println("7")
+                req.Header.Set("Authorization", "Bearer " + token)
+                
+                dl , err := client.Do(req)
+                if err != nil {
+                    fmt.Println(err)
+                    out.Close()
+                    continue
+                }
+                //fmt.Println("8")
+                _, err = io.Copy(out, dl.Body)
+                if err != nil {
+                    
+                }
+                
+                out.Close()
+                dl.Body.Close()
+                
+                
+                
+                
+            }
+            
+            
+            
+            
+        }
 	}
 }
 

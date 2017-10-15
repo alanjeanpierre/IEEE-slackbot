@@ -59,6 +59,9 @@ This bot responds to a few commands
 `@bot-name poll n`
 * Constructs a reaction-based poll from 1 - n, max 10
 
+`@bot-name`
+* If the title of a file is the bots name, the bot will download it to the ./files directory
+
 ---
 
 ## Administrative use
