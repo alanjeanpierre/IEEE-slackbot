@@ -27,7 +27,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -35,12 +34,12 @@ import (
     "io"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+    //"errors"
 )
 
 func main() {
@@ -49,51 +48,50 @@ func main() {
 		os.Exit(1)
 	}
 
-	uptime := time.Now()
-	var numOfMessages uint64
-
+    var db Database
+    db.uptime = time.Now()
+    
 	// start a websocket-based Real Time API session
-	ws, id, err := slackConnect(os.Args[1])
+	ws, botid, err := slackConnect(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("mybot ready, ^C exits")
 
-	boss := os.Args[2]
-	rootloc := os.Args[3]
-	token := os.Args[1]
+    db.ws = ws
+    db.botid = botid
+	db.boss = os.Args[2]
+	db.rootloc = os.Args[3]
+	db.token = os.Args[1]
 
-	userLookup := make(map[string]string)
-	channelLookup := make(map[string]string)
-	banlist := make(map[string]bool)
 
-	loadmap(userLookup, channelLookup, banlist, rootloc)
+	db.load()
 
-	elevated := false
-	
 	// heartbeat 10s interval
-	go func(ws **websocket.Conn) {
+	go func(db *Database) {
 		for {
 			m := Message{ID : 1234, Type : "ping"}
 			//log.Println("Ping")
-			postMessage(*ws, m)
+			postMessage(db.ws, m)
 			time.Sleep(10 * time.Second)
 		}
-	}(&ws)
+	}(&db)
 
 	for {
 
-		err = ws.SetReadDeadline(time.Now().Add(30*time.Second))
+		err = db.ws.SetReadDeadline(time.Now().Add(30*time.Second))
 		if err != nil {
 			log.Fatal(err)
 		}
-		b, err := getRTM(ws)
+		b, err := getRTM(db.ws)
 		if err != nil {
 			log.Println(err)
 			// connection failure
 			// try reconnecting..?
 			log.Println("Connection failure, attempting to reconnect on 5s intervals...")
 			i := 0
+            var ws *websocket.Conn
+            var id string
 			for i = 1; i <= 5; i++ {
 				log.Printf("Attempt %d... \n", i)
 				var err error
@@ -110,6 +108,8 @@ func main() {
 				log.Fatal("Couldn't reconnect. Exiting")
 			} else {
 				log.Println("Successfully reconnected")
+                db.ws = ws
+                db.botid = id
 				continue // from message read loop
 			}
 			
@@ -122,8 +122,10 @@ func main() {
 		}
 
 		if r.Type == "message" {
-			numOfMessages = numOfMessages + 1
+            db.nmsg += 1
 			var m Message
+            
+            // get full message
 			err := json.Unmarshal(b, &m)
 			//err := json.Unmarshal(r.X, &m)
 			if err != nil {
@@ -131,31 +133,17 @@ func main() {
 			}
 
 			// identify user from ID to readable string
-			usr, ok := userLookup[m.User]
-			if !ok {
-				usr = findUser(m.User, os.Args[1])
-				userLookup[m.User] = usr
-			}
-
-			bannedyn, ok := banlist[usr]
-			if bannedyn == true && usr != boss {
-				continue
-			}
+			usr := db.getUser(m.User)
 
 			// identify channel from ID to readable string
 			// Private channels and DMs don't show up though :/
-			channel, ok := channelLookup[m.Channel]
-			if !ok {
-				channel = findChannel(m.Channel, os.Args[1])
-				channelLookup[m.Channel] = channel
-
-			}
+			channel := db.getChannel(m.Channel)
 
 			// create a log file named after the channel
 			// and log the message
-			file, err := os.OpenFile(rootloc+"logs/"+channel+".txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0664)
+			file, err := os.OpenFile(db.rootloc+"logs/"+channel+".txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0664)
 			if err != nil {
-				death(m, ws)
+				death(m, db.ws)
 				log.Fatal(err)
 			}
 			times := strings.Split(m.TS, ".")
@@ -177,359 +165,117 @@ func main() {
 				log.Fatal(err)
 			}
 
-			elevated = (usr == boss)
-
+            // don't respond to banned people
+			if db.isBanned(usr) {
+				continue
+			}
 			// shit posting
 			go func(m Message) {
 
 				text := strings.ToLower(m.Text)
 
 				if strings.Contains(text, "doing it") {
-					go postReaction(token, m.Channel, m.TS, "doing_it")
+					go postReaction(db.token, m.Channel, m.TS, "doing_it")
 				}
 
 				if strings.Contains(text, "fucked up") {
-					go postReaction(token, m.Channel, m.TS, "shinji-sauce")
+					go postReaction(db.token, m.Channel, m.TS, "shinji-sauce")
 				}
 
 				// should fix a lot of false positives, but keep onee-sama triggering
 				if strings.Contains(text, " one") {
-					go postReaction(token, m.Channel, m.TS, "wanwanwan")
+					go postReaction(db.token, m.Channel, m.TS, "wanwanwan")
 				}
 				
 				if strings.Contains(text, "eh") {
-					go postReaction(token, m.Channel, m.TS, "flag-ca")
+					go postReaction(db.token, m.Channel, m.TS, "flag-ca")
 				}
 			}(m)
 
 			// if bot is mentioned
-			if strings.HasPrefix(m.Text, "<@"+id+">") {
-
-				// if so try to parse if
-				parts := strings.Fields(m.Text)
-
-				if len(parts) >= 2 {
-					switch cmd := strings.ToLower(parts[1]); cmd {
-					// admin commands
-					case "ban":
-						if !elevated {
-							go func(m Message) {
-								m.Text = "You aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png"
-								postMessage(ws, m)
-							}(m)
-							continue
-						}
-
-						if len(parts) == 3 {
-							bannedUser := parts[2]
-							file, err := os.OpenFile(rootloc+"banlist", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0664)
-							if err != nil {
-								continue
-							}
-							fmt.Fprintf(file, "%s\n", bannedUser)
-							file.Close()
-							banlist[bannedUser] = true
-							go func(m Message) {
-								m.Text = fmt.Sprintf("Ok, I banned %s", bannedUser)
-								postMessage(ws, m)
-							}(m)
-						}
-
-					case "unban":
-						if !elevated {
-							go func(m Message) {
-								m.Text = "You aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png"
-								postMessage(ws, m)
-							}(m)
-							continue
-						}
-
-						if len(parts) == 3 {
-							bannedUser := parts[2]
-							if banlist[bannedUser] != true {
-
-								go func(m Message) {
-									m.Text = fmt.Sprintf("%s is not banned", bannedUser)
-									postMessage(ws, m)
-								}(m)
-								continue
-							}
-
-							banlist[bannedUser] = false
-
-							blist, err := ioutil.ReadFile(rootloc + "banlist")
-							if err != nil {
-								continue
-							}
-							newblist := bytes.Replace(blist, []byte(bannedUser+"\n"), []byte(""), 1)
-							err = ioutil.WriteFile(rootloc+"banlist", newblist, 0664)
-							go func(m Message) {
-								m.Text = fmt.Sprintf("Ok, I unbanned %s", bannedUser)
-								postMessage(ws, m)
-							}(m)
-						}
-
-					case "cleanup":
-						if !elevated {
-							go func(m Message) {
-								m.Text = fmt.Sprintf("@%s you aint the boss of me http://alanjeanpierre.hopto.org/bs/vanned.png", usr)
-								postMessage(ws, m)
-							}(m)
-							continue
-						}
-						savemap(userLookup, channelLookup, rootloc)
-						go func(m Message) {
-							m.Text = fmt.Sprintf("Ok, I saved everything")
-							postMessage(ws, m)
-						}(m)
-
-					// normal user commands
-					case "stock":
-						if len(parts) == 3 {
-							// looks good, get the quote and reply with the result
-							go func(m Message) {
-								m.Text = getQuote(parts[2])
-								postMessage(ws, m)
-							}(m)
-							// NOTE: the Message object is copied, this is intentional
-
-						}
-
-					case "wiki":
-						if len(parts) == 3 && parts[2] == "challenge" {
-							go func(m Message) {
-								wikileanks := wikichall()
-								if wikileanks == "" { // err from wiki api
-									m.Text = fmt.Sprintf("@%s wiki failed us. zip. nada. nil. Try again?", usr)
-								} else {
-									m.Text = fmt.Sprintf("@%s %s", usr, wikileanks)
-								}
-								postMessage(ws, m)
-							}(m)
-						}
-
-					case "help":
-						go func(m Message) {
-							rdme := "You can view my readme here: https://github.com/alanjeanpierre/IEEE-slackbot/blob/master/README.md"
-							m.Text = fmt.Sprintf("@%s %s\n", usr, rdme)
-							postMessage(ws, m)
-						}(m)
-
-					case "links":
-						if len(parts) == 4 && parts[2] == "add" {
-							link := parts[3]
-							link = link[1 : len(link)-1]
-							file, err := os.OpenFile(rootloc+"links", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0664)
-							if err != nil {
-								go func(m Message) {
-									m.Text = fmt.Sprintf("@%s sorry, can't seem to access the links right now", usr)
-									postMessage(ws, m)
-								}(m)
-								continue
-							}
-							fmt.Fprintf(file, "%s\n", link)
-							file.Close()
-
-							go func(m Message) {
-								m.Text = fmt.Sprintf("@%s thanks for the link!", usr)
-								postMessage(ws, m)
-							}(m)
-
-						} else if len(parts) == 3 && parts[2] == "get" {
-							// reads in the links file and sends a randomly selected link
-							go func(m Message) {
-								links, err := readLines(rootloc + "links")
-								if err != nil || len(links) == 0 {
-									return
-								}
-								index := rand.Intn(len(links))
-								m.Text = fmt.Sprintf("@%s enjoy! %s", usr, links[index])
-								postMessage(ws, m)
-							}(m)
-						} else {
-							// huh?
-							m.Text = fmt.Sprintf("sorry, that does not compute. @onee-sama links add|get\n")
-							postMessage(ws, m)
-						}
-
-					case "status":
-						go func(m Message) {
-							m.Text = fmt.Sprintf("@%s I have been running for %v and have read %d messages", usr, time.Since(uptime), numOfMessages)
-							postMessage(ws, m)
-						}(m)
-
-					case "watson":
-						if len(parts) > 4 {
-							text := m.Text[3:]
-							go func(m Message) {
-								m.Text = fmt.Sprintf("@%s\n %s", usr, watsonToneAnalyzer(text, parts[2]))
-								postMessage(ws, m)
-							}(m)
-						} else if len(parts) == 3 && parts[2] == "help" {
-							go func(m Message) {
-								m.Text = fmt.Sprintf("@%s call @onee-sama watson tones sentence\nAvailable tones are emotion, language, social and those wanted should be written like emotion,language,social", usr)
-								postMessage(ws, m)
-							}(m)
-						} else {
-							m.Text = fmt.Sprintf("sorry, that does not compute. Try @onee-sama watson help\n")
-							postMessage(ws, m)
-						}
-
-					case "poll":
-						if len(parts) >= 3 {
-							go func(m Message) {
-								num := []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "keycap_ten"}
-								p := strings.Fields(m.Text)
-								n, err := strconv.Atoi(p[2])
-								if err != nil || n > 10 {
-									m.Text = fmt.Sprintf("I recieved an invalid poll")
-									postMessage(ws, m)
-									return
-								}
-								for i := 1; i <=n; i++ {
-									postReaction(token, m.Channel, m.TS, num[i])
-								}
-								
-							} (m)
-						}
-					case "schedule":
-						if len(parts) > 3 {
-							go func(m Message) {
-								free := parts[2] == "free"
-								text := strings.ToLower(strings.TrimPrefix(m.Text, strings.Join(parts[:3], " ") + " "))
-								err = readSchedule(text, free, rootloc, m.User)
-								if err != nil {
-									m.Text = "Error, bad scheduling"
-									postMessage(ws, m)
-									return
-								}
-								m.Text = "Thanks, got your schedule"
-								postMessage(ws, m)
-								
-							}(m)
-						}
-					case "meeting" :
-						go func(m Message) {
-							day, time, n := bestTime(rootloc)
-							m.Text = fmt.Sprintf("@%s the best time to meet is %s at %d:00, %d people should be in attendance", usr, day, time, n)
-							postMessage(ws, m)
-						} (m)
-					case "meetings" :
-						go func(m Message) {
-							var buffer bytes.Buffer
-							availables := sumTimes(rootloc)
-							days := []string{"Mon", "Tue", "Wed", "Thu", "Fri"}
-							times := []string{"8:00AM", "9:00AM", "10:00AM", "11:00AM", "12:00PM", "1:00PM", "2:00PM", "3:00PM", "4:00PM", "5:00PM"}
-							
-							buffer.WriteString("```\n\n")
-							buffer.WriteString(fmt.Sprintf("%10s", ""))
-							for _, day := range days {
-								buffer.WriteString(fmt.Sprintf("%5s", day))
-							}
-							
-							for j, rows := range availables {
-								buffer.WriteString(fmt.Sprintf("\n%10s", times[j]))
-								for _, column := range rows {
-									buffer.WriteString(fmt.Sprintf("%5d", column))
-								}
-							}
-							buffer.WriteString("\n```")
-							
-							m.Text = buffer.String()
-							postMessage(ws, m)
-							
-						} (m)
-					default:
-						m.Text = fmt.Sprintf("sorry, that does not compute\n")
-						postMessage(ws, m)
-					}
-				}
-			}
+            if !strings.HasPrefix(m.Text, "<@"+db.botid+">") {
+                continue
+            }
+            
+            go func(db *Database, m Message) {
+                reply := parsecmd(db, m)
+                if reply == "" { // don't reply for silent commands
+                    return
+                }
+                respond(fmt.Sprintf("<@%s> %s", m.User, reply), m, db.ws)
+            }(&db, m)
+            
 		} else if r.Type == "pong" {
 			//log.Println("Pong")
 			// maybe add some latency checking? idk
 			continue
 		} else if r.Type == "file_shared" {
         
-            //fmt.Println("1")
-            
 			var file_shared File_Shared
 			err := json.Unmarshal(b, &file_shared)
 			if err != nil {
 				panic(err)
 			}
             
-            
-            url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", token, file_shared.File_ID)
-            resp, err := http.Get(url)
-            if err != nil {
-                continue
-            }
-            if resp.StatusCode != 200 {
-                continue
-            }
-            //fmt.Println("2")
-            
-            body, err := ioutil.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                fmt.Println(err)
-                continue
-            }
+            go func(db *Database, file_shared File_Shared) {
+                url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", db.token, file_shared.File_ID)
+                resp, err := http.Get(url)
+                if err != nil || resp.StatusCode != 200{
+                    log.Println("Error getting file info from slack")
+                    log.Println(err)
+                    return
+                }
+                
+                body, err := ioutil.ReadAll(resp.Body)
+                resp.Body.Close()
+                if err != nil {
+                    log.Println(err)
+                    return
+                }
 
-            //fmt.Println("3")
-            var file Files_Info
-            err = json.Unmarshal(body, &file)
-            if err != nil || !file.OK {
-                fmt.Println("I died - filing")
-                fmt.Println(err)
-                continue
-            }
+                var file Files_Info
+                err = json.Unmarshal(body, &file)
+                if err != nil || !file.OK {
+                    log.Println(err)
+                    return
+                }
             
-            //fmt.Println("4")
-            //fmt.Println(file.File.Title)
-            //fmt.Println(userLookup[id])
-            if file.File.Title == "@" + userLookup[id] {
-            
-                //fmt.Println("5")
-                out, err := os.Create(rootloc + "files/" + file.File.Name)
-                if err != nil {
-                    continue
-                }
-                //fmt.Println("6")
-                //fmt.Println(file.File.URL)
-                client := &http.Client{}
-                req, err:= http.NewRequest("GET", file.File.URL, nil)
-                if err != nil {
-                    continue
-                }
+                if file.File.Title == "@" + db.users[db.botid] {
                 
-                //fmt.Println("7")
-                req.Header.Set("Authorization", "Bearer " + token)
-                
-                dl , err := client.Do(req)
-                if err != nil {
-                    fmt.Println(err)
-                    out.Close()
-                    continue
-                }
-                //fmt.Println("8")
-                _, err = io.Copy(out, dl.Body)
-                if err != nil {
+                    out, err := os.Create(db.rootloc + "files/" + file.File.Name)
+                    if err != nil {
+                        log.Println("Error creating file")
+                        log.Println(err)
+                        return
+                    }
                     
+                    client := &http.Client{}
+                    req, err:= http.NewRequest("GET", file.File.URL, nil)
+                    if err != nil {
+                        log.Println("Error downloading file")
+                        log.Println(err)
+                        return
+                    }
+                    
+                    req.Header.Set("Authorization", "Bearer " + db.token)
+                    
+                    dl , err := client.Do(req)
+                    if err != nil {
+                        log.Println(err)
+                        out.Close()
+                        return
+                    }
+                    
+                    _, err = io.Copy(out, dl.Body)
+                    if err != nil {
+                        log.Println("Error writing file")
+                        log.Println(err)
+                    }
+                    
+                    out.Close()
+                    dl.Body.Close()
                 }
-                
-                out.Close()
-                dl.Body.Close()
-                
-                
-                
-                
-            }
-            
-            
-            
-            
+            }(&db, file_shared)
         }
 	}
 }
@@ -561,7 +307,6 @@ func postReaction(token string, channel string, timestamp string, reaction strin
 		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
 		fmt.Println(err)
 	}
-
 }
 
 // readLines reads a whole file into memory
@@ -638,174 +383,6 @@ type SlackGroupObject struct {
 	} `json:"group"`
 }
 
-// load the users and channels from the files
-func loadmap(user map[string]string, channel map[string]string, banlist map[string]bool, rootloc string) {
-
-	file, err := os.OpenFile(rootloc + "usrs", os.O_RDONLY, 0664)
-	if err == nil {
-
-		scanner := bufio.NewScanner(file)
-
-		for scanner.Scan() {
-
-			users := strings.Fields(scanner.Text())
-			user[users[0]] = strings.Join(users[1:], " ")
-		}
-	}
-
-	file, err = os.OpenFile(rootloc + "channels", os.O_RDONLY, 0664)
-	if err == nil {
-
-		scanner := bufio.NewScanner(file)
-
-		for scanner.Scan() {
-
-			channels := strings.Fields(scanner.Text())
-			channel[channels[0]] = strings.Join(channels[1:], " ")
-		}
-	}
-
-	file, err = os.OpenFile(rootloc + "banlist", os.O_RDONLY, 0664)
-	if err == nil {
-
-		scanner := bufio.NewScanner(file)
-
-		for scanner.Scan() {
-
-			banned := scanner.Text()
-			banlist[banned] = true
-		}
-	}
-
-}
-
-// save the loaded maps to disk
-func savemap(user map[string]string, channel map[string]string, location string) {
-	file, err := os.OpenFile(location+"usrs", os.O_WRONLY|os.O_CREATE, 0664)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for key, value := range user {
-		fmt.Fprintf(file, "%s %s\n", key, value)
-	}
-	file.Close()
-
-	file, err = os.OpenFile(location+"channels", os.O_WRONLY|os.O_CREATE, 0664)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for key, value := range channel {
-		fmt.Fprintf(file, "%s %s\n", key, value)
-	}
-	file.Close()
-}
-
-// queries slack api for channel name
-func findChannel(channel string, token string) string {
-
-	url := fmt.Sprintf("https://slack.com/api/channels.info?token=%s&channel=%s", token, channel)
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if resp.StatusCode != 200 {
-		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
-		fmt.Println(err)
-		return "idk"
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-
-	resp.Body.Close()
-	if err != nil {
-
-		fmt.Println(err)
-		return "idk"
-	}
-
-	var response SlackChannelObject
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		fmt.Println("I died - find channel")
-		fmt.Println(err)
-		return "idk"
-	}
-
-	if response.Ok {
-		return response.Channel.Name
-	}
-	// else its private
-	return findGroup(channel, token)
-}
-
-func findGroup(channel, token string) string {
-	url := fmt.Sprintf("https://slack.com/api/groups.info?token=%s&channel=%s", token, channel)
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if resp.StatusCode != 200 {
-		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
-		fmt.Println(err)
-		return "idk"
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-
-	resp.Body.Close()
-	if err != nil {
-
-		fmt.Println(err)
-		return "idk"
-	}
-
-	var response SlackGroupObject
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		fmt.Println("I died - find channel")
-		fmt.Println(err)
-		return "idk"
-	}
-
-	if response.Ok {
-		return response.Group.Name
-	}
-	// else must be a single DM
-	return "Private - " + channel
-}
-
-// queries slack api for user name from ID
-func findUser(usr string, token string) string {
-	url := fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", token, usr)
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if resp.StatusCode != 200 {
-		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
-		fmt.Println(err)
-		return "idk"
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-
-	resp.Body.Close()
-	if err != nil {
-		fmt.Println(err)
-		return "idk"
-	}
-
-	var response SlackUserObject
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		fmt.Println("I died - find user")
-		fmt.Println(err)
-		return "idk"
-	}
-	return response.User.Name
-
-}
-
 // queries wiki api for 2 random pages
 func wikichall() string {
 	resp, err := http.Get("https://en.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=2")
@@ -855,4 +432,9 @@ func getQuote(sym string) string {
 		return fmt.Sprintf("%s (%s) is trading at $%s", rows[0][0], rows[0][1], rows[0][2])
 	}
 	return fmt.Sprintf("unknown response format (symbol was \"%s\")", sym)
+}
+
+func respond(response string, m Message, ws *websocket.Conn) {
+    m.Text = response
+    postMessage(ws, m)
 }
