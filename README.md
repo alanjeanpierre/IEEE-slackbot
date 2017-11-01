@@ -7,12 +7,14 @@ your very own cool Slack bot!
 Check the [blog post](https://www.opsdash.com/blog/slack-bot-in-golang.html)
 for a description of mybot internals.
 
-This particular implementation logs all messages in channels the bot is a part of.
-It tries to find the name of the channel and will name the log file after the channel,
-but if it can't find it (as in the case of DMs or private channels) it will prefix the log
+This particular implementation logs all messages in channels the bot is a part of to an sqlite3 database as well as external files (until deprecation later).
+It tries to find the name of the channel and will name the log file and SQL column after the channel,
+but if it can't find it (as in the case of DMs or private groups) it will prefix the log
 file name with `Private -` and the channel ID.
 It also gets stock, random wikipedia pages for games, and maintains a file 
 that users can add links or whatever they want to.
+
+
 
 ## Usage
 Compile mybot.go and slack.go and run with:
@@ -62,6 +64,14 @@ This bot responds to a few commands
 `@bot-name`
 * If the title of a file is the bots name, the bot will download it to the ./files directory
 
+`@bot-name remindme n seconds|minutes|hours|days message`
+* Responds after the specified delay the same message
+* For time lengths, will accept singular versions and single letter versions
+* example: `@bot-name remindme 10 m Did you turn off the stove?`
+* Currently does not do fractional units. If you want 6 hours and 30 minutes, you'll have to say 390 minutes
+
+`@bot-name remindall n seconds|minutes|hours|days message`
+* Alerts channel after the specified delay the same message
 ---
 
 ## Administrative use

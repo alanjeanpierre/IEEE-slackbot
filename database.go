@@ -1,63 +1,104 @@
 package main
 
 import (
-    "golang.org/x/net/websocket"
-    "time"
-    "strings"
-    "fmt"
-    "os"
-    "log"
-    "bufio"
-    "net/http"
-    "encoding/json"
-    "io/ioutil"
-
+	"bufio"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/net/websocket"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 type Database struct {
-    users       map[string]string
-    channels    map[string]string
-    banlist     map[string]bool
-    boss        string
-    rootloc     string
-    token       string
-    ws          *websocket.Conn
-    nmsg        int
-    uptime      time.Time
-    botid       string
+	users    map[string]string
+	channels map[string]string
+	banlist  map[string]bool
+	boss     string
+	rootloc  string
+	token    string
+	ws       *websocket.Conn
+	nmsg     int
+	uptime   time.Time
+	botid    string
+	db       *sql.DB
+	mutex    sync.Mutex
+}
+
+func (db *Database) insertUser(id, usr string) error {
+
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into users values (?, ?)", id, usr)
+	db.mutex.Unlock()
+	return err
+}
+
+func (db *Database) insertChannel(id, channel string) error {
+
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into channels values (?, ?)", id, channel)
+	db.mutex.Unlock()
+	return err
+}
+
+func (db *Database) logMessage(m Message) error {
+
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into logs values (?, ?, ?, ?)", getUnix(m.TS), m.Channel, m.User, m.Text)
+	db.mutex.Unlock()
+	return err
+}
+
+func (db *Database) insertLink(uid, link string) error {
+
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into links values (?, ?)", uid, link)
+	db.mutex.Unlock()
+	return err
 }
 
 func (db *Database) isElevated(id string) bool {
-    return db.boss == db.getUser(id)
+	return db.boss == db.getUser(id)
 }
 
 func (db *Database) isBanned(usr string) bool {
-    return usr != db.boss && db.banlist[usr]
+	return usr != db.boss && db.banlist[usr]
 }
 
 func (db *Database) getUser(id string) string {
-    usr, ok := db.users[id]
-    if !ok {
-        usr = getUser(id, db.token)
-        db.users[id] = usr
-    }
-    
-    return usr
+	usr, ok := db.users[id]
+	if !ok {
+		usr = getUser(id, db.token)
+		db.users[id] = usr
+
+		// save to db
+		db.insertUser(id, usr)
+	}
+
+	return usr
 }
 
 func (db *Database) getChannel(id string) string {
-    channel, ok := db.channels[id]
-    if !ok {
-        channel = getChannel(id, db.token)
-        db.channels[id] = channel
-    }
-    
-    return channel
+	channel, ok := db.channels[id]
+	if !ok {
+		channel = getChannel(id, db.token)
+		db.channels[id] = channel
+		db.insertChannel(id, channel)
+	}
+
+	return channel
 }
 
 // save the loaded maps to disk
 func (db *Database) save() {
-    file, err := os.OpenFile(db.rootloc+"usrs", os.O_WRONLY|os.O_CREATE, 0664)
+	file, err := os.OpenFile(db.rootloc+"usrs", os.O_WRONLY|os.O_CREATE, 0664)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,38 +118,82 @@ func (db *Database) save() {
 }
 
 // loads the users and channels and banlist from disk
-func (db *Database) load() {
+func (db *Database) load() error {
+
+	d, err := setupDatabase(db.rootloc)
+	db.db = d
+	if err != nil {
+		return err
+	}
 
 	db.users = make(map[string]string)
 	db.channels = make(map[string]string)
 	db.banlist = make(map[string]bool)
+
+	rows, err := db.db.Query("select * from users;")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id string
+		var name string
+		err := rows.Scan(&id, &name)
+		if err != nil {
+			log.Println("error scanning users")
+			continue
+		}
+		db.users[id] = name
+	}
+	rows.Close()
+
+	rows, err = db.db.Query("select * from channels;")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id string
+		var name string
+		err := rows.Scan(&id, &name)
+		if err != nil {
+			log.Println("error scanning channels")
+			continue
+		}
+		db.channels[id] = name
+	}
+	rows.Close()
+
+	/*
+		file, err := os.OpenFile(db.rootloc + "usrs", os.O_RDONLY, 0664)
+		if err == nil {
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				users := strings.Fields(scanner.Text())
+				db.users[users[0]] = strings.Join(users[1:], " ")
+			}
+		}
+
+		file, err = os.OpenFile(db.rootloc + "channels", os.O_RDONLY, 0664)
+		if err == nil {
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				channels := strings.Fields(scanner.Text())
+				db.channels[channels[0]] = strings.Join(channels[1:], " ")
+			}
+		}
+	*/
+
+	file, err := os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
+	if err != nil {
     
-	file, err := os.OpenFile(db.rootloc + "usrs", os.O_RDONLY, 0664)
-	if err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			users := strings.Fields(scanner.Text())
-			db.users[users[0]] = strings.Join(users[1:], " ")
-		}
-	}
+        return err
+    }
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        banned := scanner.Text()
+        db.banlist[banned] = true
+    }
 
-	file, err = os.OpenFile(db.rootloc + "channels", os.O_RDONLY, 0664)
-	if err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			channels := strings.Fields(scanner.Text())
-			db.channels[channels[0]] = strings.Join(channels[1:], " ")
-		}
-	}
-
-	file, err = os.OpenFile(db.rootloc + "banlist", os.O_RDONLY, 0664)
-	if err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			banned := scanner.Text()
-			db.banlist[banned] = true
-		}
-	}
+    return nil
 }
 
 // queries slack api for user name from ID
@@ -140,9 +225,8 @@ func getUser(id string, token string) string {
 		fmt.Println(err)
 		return "idk"
 	}
-	return response.User.Name    
+	return response.User.Name
 }
-
 
 // queries slack api for channel name
 func getChannel(channel string, token string) string {
@@ -216,4 +300,37 @@ func getGroup(channel string, token string) string {
 	}
 	// else must be a single DM
 	return "Private - " + channel
+}
+
+// opens (and creates the tables) of the database
+func setupDatabase(rootloc string) (*sql.DB, error) {
+
+	db, err := sql.Open("sqlite3", rootloc+"database.db")
+	if err != nil {
+		return nil, err
+	}
+
+	sqlStmt := `
+    create table if not exists logs (time datetime, cid text, uid text, message text);
+    create table if not exists links (uid text, link text);
+    create table if not exists users (uid text primary key, username text);
+    create table if not exists channels(cid text primary key, channel text);
+    `
+	_, err = db.Exec(sqlStmt)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func getUnix(time string) int {
+
+	ms, err := strconv.Atoi(strings.Split(time, ".")[0])
+	if err != nil {
+		return 0
+	}
+
+	return ms
+
 }

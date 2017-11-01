@@ -29,17 +29,18 @@ import (
 	"bufio"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"golang.org/x/net/websocket"
-    "io"
+	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-    //"errors"
 )
 
 func main() {
@@ -48,9 +49,9 @@ func main() {
 		os.Exit(1)
 	}
 
-    var db Database
-    db.uptime = time.Now()
-    
+	var db Database
+	db.uptime = time.Now()
+
 	// start a websocket-based Real Time API session
 	ws, botid, err := slackConnect(os.Args[1])
 	if err != nil {
@@ -58,226 +59,201 @@ func main() {
 	}
 	log.Println("mybot ready, ^C exits")
 
-    db.ws = ws
-    db.botid = botid
+	db.ws = ws
+	db.botid = botid
 	db.boss = os.Args[2]
 	db.rootloc = os.Args[3]
 	db.token = os.Args[1]
-
-
-	db.load()
+	err = db.load()
+    if err != nil {
+        log.Fatal(err)
+    }
+	defer db.db.Close()
+    
+    
+	// setup files and folders
+	_ = os.Mkdir(db.rootloc + "logs", 0777)
+	_ = os.Mkdir(db.rootloc + "files", 0777)
 
 	// heartbeat 10s interval
 	go func(db *Database) {
 		for {
-			m := Message{ID : 1234, Type : "ping"}
+			m := Message{ID: 1234, Type: "ping"}
 			//log.Println("Ping")
 			postMessage(db.ws, m)
 			time.Sleep(10 * time.Second)
 		}
 	}(&db)
 
-	for {
+    readLoop(&db)
+	
+}
 
-		err = db.ws.SetReadDeadline(time.Now().Add(30*time.Second))
+func readLoop(db *Database) {
+    
+    for {
+
+		err := db.ws.SetReadDeadline(time.Now().Add(30 * time.Second))
 		if err != nil {
 			log.Fatal(err)
 		}
 		b, err := getRTM(db.ws)
 		if err != nil {
 			log.Println(err)
-			// connection failure
-			// try reconnecting..?
-			log.Println("Connection failure, attempting to reconnect on 5s intervals...")
-			i := 0
-            var ws *websocket.Conn
-            var id string
-			for i = 1; i <= 5; i++ {
-				log.Printf("Attempt %d... \n", i)
-				var err error
-				ws, id, err = slackConnect(os.Args[1])
-				if err != nil {
-					log.Printf("Attempt %d failure. Sleeping 5 seconds\n", i)
-					time.Sleep(5 * time.Second)
-				} else {
-					break
-				}
+			db.ws, db.botid, err = recoverConn()
+			if err != nil {
+				log.Fatal("Unable to reconnect. Exiting")
 			}
-			
-			if i > 5 {
-				log.Fatal("Couldn't reconnect. Exiting")
-			} else {
-				log.Println("Successfully reconnected")
-                db.ws = ws
-                db.botid = id
-				continue // from message read loop
-			}
-			
+			continue
 		}
-		
-		r, err := getJSON(b) 
+
+		r, err := getJSON(b)
 		if err != nil {
 			// bad json?
 			continue
 		}
 
-		if r.Type == "message" {
-            db.nmsg += 1
-			var m Message
-            
-            // get full message
-			err := json.Unmarshal(b, &m)
-			//err := json.Unmarshal(r.X, &m)
-			if err != nil {
-				panic(err)
-			}
-
-			// identify user from ID to readable string
-			usr := db.getUser(m.User)
-
-			// identify channel from ID to readable string
-			// Private channels and DMs don't show up though :/
-			channel := db.getChannel(m.Channel)
-
-			// create a log file named after the channel
-			// and log the message
-			file, err := os.OpenFile(db.rootloc+"logs/"+channel+".txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0664)
-			if err != nil {
-				death(m, db.ws)
-				log.Fatal(err)
-			}
-			times := strings.Split(m.TS, ".")
-			if len(times) != 2 {
-				continue
-			}
-
-			tms, tns, err := getTime(times[0], times[1])
-			if err != nil {
-				death(m, ws)
-				log.Fatal(err)
-			}
-
-			fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), usr, m.Text)
-
-			err = file.Close()
-			if err != nil {
-				death(m, ws)
-				log.Fatal(err)
-			}
-
-            // don't respond to banned people
-			if db.isBanned(usr) {
-				continue
-			}
-			// shit posting
-			go func(m Message) {
-
-				text := strings.ToLower(m.Text)
-
-				if strings.Contains(text, "doing it") {
-					go postReaction(db.token, m.Channel, m.TS, "doing_it")
-				}
-
-				if strings.Contains(text, "fucked up") {
-					go postReaction(db.token, m.Channel, m.TS, "shinji-sauce")
-				}
-
-				// should fix a lot of false positives, but keep onee-sama triggering
-				if strings.Contains(text, " one") {
-					go postReaction(db.token, m.Channel, m.TS, "wanwanwan")
-				}
-				
-				if strings.Contains(text, "eh") {
-					go postReaction(db.token, m.Channel, m.TS, "flag-ca")
-				}
-			}(m)
-
-			// if bot is mentioned
-            if !strings.HasPrefix(m.Text, "<@"+db.botid+">") {
+		switch r.Type {
+            case "pong":
                 continue
-            }
-            
-            go func(db *Database, m Message) {
-                reply := parsecmd(db, m)
-                if reply == "" { // don't reply for silent commands
-                    return
-                }
-                respond(fmt.Sprintf("<@%s> %s", m.User, reply), m, db.ws)
-            }(&db, m)
-            
-		} else if r.Type == "pong" {
-			//log.Println("Pong")
-			// maybe add some latency checking? idk
-			continue
-		} else if r.Type == "file_shared" {
-        
-			var file_shared File_Shared
-			err := json.Unmarshal(b, &file_shared)
-			if err != nil {
-				panic(err)
-			}
-            
-            go func(db *Database, file_shared File_Shared) {
-                url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", db.token, file_shared.File_ID)
-                resp, err := http.Get(url)
-                if err != nil || resp.StatusCode != 200{
-                    log.Println("Error getting file info from slack")
-                    log.Println(err)
-                    return
-                }
-                
-                body, err := ioutil.ReadAll(resp.Body)
-                resp.Body.Close()
+            case "message":
+                db.nmsg += 1
+                var m Message
+                err := json.Unmarshal(b, &m) // get the full message
                 if err != nil {
                     log.Println(err)
-                    return
+                    continue
                 }
-
-                var file Files_Info
-                err = json.Unmarshal(body, &file)
-                if err != nil || !file.OK {
-                    log.Println(err)
-                    return
-                }
-            
-                if file.File.Title == "@" + db.users[db.botid] {
                 
-                    out, err := os.Create(db.rootloc + "files/" + file.File.Name)
-                    if err != nil {
-                        log.Println("Error creating file")
-                        log.Println(err)
-                        return
-                    }
-                    
-                    client := &http.Client{}
-                    req, err:= http.NewRequest("GET", file.File.URL, nil)
-                    if err != nil {
-                        log.Println("Error downloading file")
-                        log.Println(err)
-                        return
-                    }
-                    
-                    req.Header.Set("Authorization", "Bearer " + db.token)
-                    
-                    dl , err := client.Do(req)
-                    if err != nil {
-                        log.Println(err)
-                        out.Close()
-                        return
-                    }
-                    
-                    _, err = io.Copy(out, dl.Body)
-                    if err != nil {
-                        log.Println("Error writing file")
-                        log.Println(err)
-                    }
-                    
-                    out.Close()
-                    dl.Body.Close()
+                //don't read blank messages
+                if m.Text == "" {
+                    continue
                 }
-            }(&db, file_shared)
+                usr := db.getUser(m.User)
+                channel := db.getChannel(m.Channel)
+                
+                logmsg(db, m, usr, channel) // log message to (deprecated) files
+                err = db.logMessage(m) // log to sql db
+                if err != nil {
+                    log.Println(err)
+                }
+                go parseMessageContent(db, m)
+                
+                if strings.HasPrefix(m.Text, "<@"+db.botid+">") {
+
+                    go func(db *Database, m Message) {
+                        reply := parsecmd(db, m)
+                        if reply == "" { // don't reply for silent commands
+                            return
+                        }
+                        respond(fmt.Sprintf("<@%s> %s", m.User, reply), m, db.ws)
+                    }(db, m)
+                }
+                
+            case "file_shared":
+                var file_shared File_Shared
+                err := json.Unmarshal(b, &file_shared)
+                if err != nil {
+                    log.Println(err)
+                    continue
+                }
+                 
+                // should probably write channels for this
+                go func(db *Database, file_shared File_Shared) {
+                    url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", db.token, file_shared.File_ID)
+                    resp, err := http.Get(url)
+                    if err != nil || resp.StatusCode != 200 {
+                        log.Println("Error getting file info from slack")
+                        log.Println(err)
+                        return
+                    }
+
+                    body, err := ioutil.ReadAll(resp.Body)
+                    resp.Body.Close()
+                    if err != nil {
+                        log.Println(err)
+                        return
+                    }
+
+                    var file Files_Info
+                    err = json.Unmarshal(body, &file)
+                    if err != nil || !file.OK {
+                        log.Println(err)
+                        return
+                    }
+
+                    if file.File.Title == "@"+db.users[db.botid] {
+
+                        out, err := os.Create(db.rootloc + "files/" + file.File.Name)
+                        if err != nil {
+                            log.Println("Error creating file")
+                            log.Println(err)
+                            return
+                        }
+
+                        client := &http.Client{}
+                        req, err := http.NewRequest("GET", file.File.URL, nil)
+                        if err != nil {
+                            log.Println("Error downloading file")
+                            log.Println(err)
+                            return
+                        }
+
+                        req.Header.Set("Authorization", "Bearer "+db.token)
+
+                        dl, err := client.Do(req)
+                        if err != nil {
+                            log.Println(err)
+                            out.Close()
+                            return
+                        }
+
+                        _, err = io.Copy(out, dl.Body)
+                        if err != nil {
+                            log.Println("Error writing file")
+                            log.Println(err)
+                        }
+
+                        out.Close()
+                        dl.Body.Close()
+                    }
+                }(db, file_shared)
+            
         }
+		
 	}
+    
+}
+
+func parseMessageContent(db *Database, m Message) {
+    text := strings.ToLower(m.Text)
+
+    if strings.Contains(text, "doing it") {
+        go postReaction(db.token, m.Channel, m.TS, "doing_it")
+        time.Sleep(time.Second)
+    }
+
+    if strings.Contains(text, "fucked up") {
+        go postReaction(db.token, m.Channel, m.TS, "shinji-sauce")
+        time.Sleep(time.Second)
+    }
+
+    // should fix a lot of false positives, but keep onee-sama triggering
+    if strings.Contains(text, " one") {
+        go postReaction(db.token, m.Channel, m.TS, "wanwanwan")
+        time.Sleep(time.Second)
+    }
+
+    if strings.Contains(text, "eh") {
+        go postReaction(db.token, m.Channel, m.TS, "flag-ca")
+        time.Sleep(time.Second)
+    }    
+    
+    if strings.Contains(text, "benefits") {
+        go postReaction(db.token, m.Channel, m.TS, "benefits")
+        time.Sleep(time.Second)
+    }
+    
 }
 
 func getTime(tms, tns string) (int64, int64, error) {
@@ -333,87 +309,6 @@ func death(m Message, ws *websocket.Conn) {
 	postMessage(ws, m)
 }
 
-// wikipedia random page struct
-type random struct {
-	ID    int    `json:"id"`
-	NS    int    `json:"ns"`
-	Title string `json:"title"`
-}
-
-// wikipedia query
-type query struct {
-	Random []random `json:"random"`
-}
-
-// more wiki structs
-type wikiresp struct {
-	Query query `json:"query"`
-}
-
-// SlackUserObject RTM response user object
-type SlackUserObject struct {
-	Ok   bool `json:"ok"`
-	User User `json:"user"`
-}
-
-// SlackChannelObject RTM response channel object
-type SlackChannelObject struct {
-	Ok      bool    `json:"ok"`
-	Channel Channel `json:"channel"`
-}
-
-// User object
-type User struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// Channel object
-type Channel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// SlackGroupObject web api response for groups (private channels)
-type SlackGroupObject struct {
-	Ok    bool `json:"ok"`
-	Group struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"group"`
-}
-
-// queries wiki api for 2 random pages
-func wikichall() string {
-	resp, err := http.Get("https://en.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=2")
-	if err != nil {
-		return ""
-	}
-	if resp.StatusCode != 200 {
-		err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
-		return ""
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-
-	resp.Body.Close()
-	if err != nil {
-		return ""
-	}
-
-	var response wikiresp
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		fmt.Println("I died")
-		return ""
-	}
-
-	page1 := strings.Replace(response.Query.Random[0].Title, " ", "_", -1)
-	page2 := strings.Replace(response.Query.Random[1].Title, " ", "_", -1)
-
-	return fmt.Sprintf("try to get from https://en.wikipedia.org/wiki/%s to https://en.wikipedia.org/wiki/%s using only the links on the page!", page1, page2)
-
-}
 
 // Get the quote via Yahoo. You should replace this method to something
 // relevant to your team!
@@ -435,6 +330,60 @@ func getQuote(sym string) string {
 }
 
 func respond(response string, m Message, ws *websocket.Conn) {
-    m.Text = response
-    postMessage(ws, m)
+	m.Text = response
+	postMessage(ws, m)
+}
+
+func recoverConn() (*websocket.Conn, string, error) {
+	// connection failure
+	// try reconnecting..?
+	log.Println("Connection failure, attempting to reconnect on 5s intervals...")
+	i := 0
+	var ws *websocket.Conn
+	var id string
+	for i = 1; i <= 5; i++ {
+		log.Printf("Attempt %d... \n", i)
+		var err error
+		ws, id, err = slackConnect(os.Args[1])
+		if err != nil {
+			sleeptime := time.Duration(math.Pow(5, float64(i)))
+			log.Printf("Attempt %d failure. Sleeping %d seconds\n", i, sleeptime)
+			time.Sleep(sleeptime * time.Second)
+		} else {
+			break
+		}
+	}
+
+	if i > 5 {
+		return nil, "", errors.New("Failed to reconnect")
+	} else {
+		log.Println("Successfully reconnected")
+		return ws, id, nil
+	}
+}
+
+func logmsg(db *Database, m Message, usr, channel string) {
+    file, err := os.OpenFile(db.rootloc+"logs/"+channel+".txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+    if err != nil {
+        death(m, db.ws)
+        log.Fatal(err)
+    }
+    times := strings.Split(m.TS, ".")
+    if len(times) != 2 {
+        return
+    }
+
+    tms, tns, err := getTime(times[0], times[1])
+    if err != nil {
+        death(m, db.ws)
+        log.Fatal(err)
+    }
+
+    fmt.Fprintf(file, "%s, %v, %q\n", time.Unix(tms, tns), usr, m.Text)
+
+    err = file.Close()
+    if err != nil {
+        death(m, db.ws)
+        log.Fatal(err)
+    }    
 }

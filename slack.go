@@ -98,18 +98,18 @@ type Message struct {
 }
 
 type File_Shared struct {
-    Type string `json:"type"`
-    File_ID string `json:"file_id"`
+	Type    string `json:"type"`
+	File_ID string `json:"file_id"`
 }
 
 type Files_Info struct {
-    OK bool `json:"ok"`
-    File struct {
-        ID string `json:"id"`
-        Name string `json:"name"`
-        Title string `json:"title"`
-        URL string `json:"url_private"`
-    } `json:"file"`
+	OK   bool `json:"ok"`
+	File struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Title string `json:"title"`
+		URL   string `json:"url_private"`
+	} `json:"file"`
 }
 
 type responseRTM struct {
@@ -141,7 +141,7 @@ var counter uint64
 func postMessage(ws *websocket.Conn, m Message) error {
 	m.ID = atomic.AddUint64(&counter, 1)
 	return websocket.JSON.Send(ws, m)
-} 
+}
 
 // Starts a websocket-based Real Time API session and return the websocket
 // and the ID of the (bot-)user whom the token belongs to.
@@ -157,4 +157,38 @@ func slackConnect(token string) (ws *websocket.Conn, id string, err error) {
 	}
 
 	return
+}
+
+
+// SlackUserObject RTM response user object
+type SlackUserObject struct {
+	Ok   bool `json:"ok"`
+	User User `json:"user"`
+}
+
+// SlackChannelObject RTM response channel object
+type SlackChannelObject struct {
+	Ok      bool    `json:"ok"`
+	Channel Channel `json:"channel"`
+}
+
+// User object
+type User struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Channel object
+type Channel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SlackGroupObject web api response for groups (private channels)
+type SlackGroupObject struct {
+	Ok    bool `json:"ok"`
+	Group struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"group"`
 }
