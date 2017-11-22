@@ -113,6 +113,8 @@ func parsecmd(db *Database, m Message) string {
 		return remindmeSetup(m, db)
 	case "remindall":
 		return remindmeSetup(m, db)
+    case "addreaction":
+        return addreaction(m, db)
 	default:
 		return "sorry that does not compute"
 	}
@@ -252,4 +254,21 @@ func remindmeSetup(m Message, db *Database) string {
 func remindme(message string, duration time.Duration, m Message, db *Database) {
 	time.Sleep(duration)
 	respond(message, m, db.ws)
+}
+
+func addreaction(m Message, db *Database) string {
+    parts := strings.Split(m.Text, "\"")
+    
+    if len(parts) != 3 {
+        return "not enough arguments, need 2"
+    }
+    
+    trigger := parts[1]
+    reaction := strings.Trim(parts[2], " :")
+    err := db.addReaction(m.User, trigger, reaction)
+    if err != nil {
+        log.Println(err)
+        return "uh oh, that didn't work. Try again?"
+    }
+    return fmt.Sprintf("ok, I'll react with :%s: to \"%s\"", reaction, trigger)
 }

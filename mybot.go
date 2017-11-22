@@ -225,33 +225,13 @@ func readLoop(db *Database) {
     
 }
 
-func parseMessageContent(db *Database, m Message) {
-    text := strings.ToLower(m.Text)
-
-    if strings.Contains(text, "doing it") {
-        go postReaction(db.token, m.Channel, m.TS, "doing_it")
-        time.Sleep(time.Second)
-    }
-
-    if strings.Contains(text, "fucked up") {
-        go postReaction(db.token, m.Channel, m.TS, "shinji-sauce")
-        time.Sleep(time.Second)
-    }
-
-    // should fix a lot of false positives, but keep onee-sama triggering
-    if strings.Contains(text, " one") {
-        go postReaction(db.token, m.Channel, m.TS, "wanwanwan")
-        time.Sleep(time.Second)
-    }
-
-    if strings.Contains(text, "eh") {
-        go postReaction(db.token, m.Channel, m.TS, "flag-ca")
-        time.Sleep(time.Second)
-    }    
+func parseMessageContent(db *Database, m Message) {    text := strings.ToLower(m.Text)
     
-    if strings.Contains(text, "benefits") {
-        go postReaction(db.token, m.Channel, m.TS, "benefits")
-        time.Sleep(time.Second)
+    for trigger, reaction := range db.reactions {
+        if strings.Contains(text, trigger) {
+            postReaction(db.token, m.Channel, m.TS, reaction) 
+            time.Sleep(time.Second)
+        }
     }
     
 }

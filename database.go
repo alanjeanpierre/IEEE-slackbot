@@ -21,6 +21,7 @@ type Database struct {
 	users    map[string]string
 	channels map[string]string
 	banlist  map[string]bool
+    reactions   map[string]string
 	boss     string
 	rootloc  string
 	token    string
@@ -62,6 +63,15 @@ func (db *Database) insertLink(uid, link string) error {
 	_, err := db.db.Exec("insert into links values (?, ?)", uid, link)
 	db.mutex.Unlock()
 	return err
+}
+
+func (db *Database) addReaction(uid, trigger, reaction string) error {
+    
+    db.reactions[trigger] = reaction
+    db.mutex.Lock()
+    _, err := db.db.Exec("insert into reactions values (?, ?, ?)", uid, trigger, reaction)
+    db.mutex.Unlock()
+    return err
 }
 
 func (db *Database) isElevated(id string) bool {
@@ -129,6 +139,7 @@ func (db *Database) load() error {
 	db.users = make(map[string]string)
 	db.channels = make(map[string]string)
 	db.banlist = make(map[string]bool)
+    db.reactions = make(map[string]string)
 
 	rows, err := db.db.Query("select * from users;")
 	if err != nil {
@@ -161,6 +172,22 @@ func (db *Database) load() error {
 		db.channels[id] = name
 	}
 	rows.Close()
+    
+    rows, err = db.db.Query("select trigger, reaction from reactions;")
+    if err != nil {
+        log.Fatal("Unable to access reactions")
+    }
+    for rows.Next() {
+        var trigger string
+        var reaction string
+        err := rows.Scan(&trigger, &reaction)
+        if err != nil {
+            log.Println("error scanning reaction rows")
+            continue
+        }
+        db.reactions[trigger] = reaction
+    }
+    rows.Close()
 
 	/*
 		file, err := os.OpenFile(db.rootloc + "usrs", os.O_RDONLY, 0664)
@@ -315,6 +342,7 @@ func setupDatabase(rootloc string) (*sql.DB, error) {
     create table if not exists links (uid text, link text);
     create table if not exists users (uid text primary key, username text);
     create table if not exists channels(cid text primary key, channel text);
+    create table if not exists reactions(uid text, trigger text, reaction text);
     `
 	_, err = db.Exec(sqlStmt)
 	if err != nil {
