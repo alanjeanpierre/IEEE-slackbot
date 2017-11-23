@@ -152,12 +152,12 @@ func readLoop(db *Database) {
                 
             case "file_shared":
                 go func(db *Database, b []byte) {
-                    ts, channel, err := downloadFile(db, b)        
+                    err := downloadFile(db, b)        
                     if err != nil {
                         log.Println(err)
                         return
                     }
-                }
+                }(db, b)
         }
 	}
 }
@@ -321,8 +321,10 @@ func downloadFile(db *Database, b []byte) error {
             return err
         }
         
-        return nil
     }
+
+    return nil
+    
     
 }
 
