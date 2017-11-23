@@ -61,9 +61,9 @@ func main() {
 
 	db.ws = ws
 	db.botid = botid
+	db.token = os.Args[1]
 	db.boss = os.Args[2]
 	db.rootloc = os.Args[3]
-	db.token = os.Args[1]
 	err = db.load()
     if err != nil {
         log.Fatal(err)
@@ -151,89 +151,25 @@ func readLoop(db *Database) {
                 }
                 
             case "file_shared":
-                var file_shared File_Shared
-                err := json.Unmarshal(b, &file_shared)
-                if err != nil {
-                    log.Println(err)
-                    continue
-                }
-                 
-                // should probably write channels for this
-                go func(db *Database, file_shared File_Shared) {
-                    url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", db.token, file_shared.File_ID)
-                    resp, err := http.Get(url)
-                    if err != nil || resp.StatusCode != 200 {
-                        log.Println("Error getting file info from slack")
-                        log.Println(err)
-                        return
-                    }
-
-                    body, err := ioutil.ReadAll(resp.Body)
-                    resp.Body.Close()
+                go func(db *Database, b []byte) {
+                    ts, channel, err := downloadFile(db, b)        
                     if err != nil {
                         log.Println(err)
                         return
                     }
-
-                    var file Files_Info
-                    err = json.Unmarshal(body, &file)
-                    if err != nil || !file.OK {
-                        log.Println(err)
-                        return
-                    }
-
-                    if file.File.Title == "@"+db.users[db.botid] {
-
-                        out, err := os.Create(db.rootloc + "files/" + file.File.Name)
-                        if err != nil {
-                            log.Println("Error creating file")
-                            log.Println(err)
-                            return
-                        }
-
-                        client := &http.Client{}
-                        req, err := http.NewRequest("GET", file.File.URL, nil)
-                        if err != nil {
-                            log.Println("Error downloading file")
-                            log.Println(err)
-                            return
-                        }
-
-                        req.Header.Set("Authorization", "Bearer "+db.token)
-
-                        dl, err := client.Do(req)
-                        if err != nil {
-                            log.Println(err)
-                            out.Close()
-                            return
-                        }
-
-                        _, err = io.Copy(out, dl.Body)
-                        if err != nil {
-                            log.Println("Error writing file")
-                            log.Println(err)
-                        }
-
-                        out.Close()
-                        dl.Body.Close()
-                    }
-                }(db, file_shared)
-            
+                }
         }
-		
 	}
-    
 }
 
-func parseMessageContent(db *Database, m Message) {    text := strings.ToLower(m.Text)
-    
+func parseMessageContent(db *Database, m Message) {    
+    text := strings.ToLower(m.Text)
     for trigger, reaction := range db.reactions {
         if strings.Contains(text, trigger) {
             postReaction(db.token, m.Channel, m.TS, reaction) 
             time.Sleep(time.Second)
         }
-    }
-    
+    }    
 }
 
 func getTime(tms, tns string) (int64, int64, error) {
@@ -366,4 +302,76 @@ func logmsg(db *Database, m Message, usr, channel string) {
         death(m, db.ws)
         log.Fatal(err)
     }    
+}
+
+func downloadFile(db *Database, b []byte) error {
+    var file_shared File_Shared
+    err := json.Unmarshal(b, &file_shared)
+    if err != nil {
+        return err
+    }
+    file_info, err := getFileInformation(db, file_shared)  
+    if err != nil {
+        return err
+    }
+    
+    if file_info.File.Title == "@"+db.users[db.botid] {
+        err = downloadFileFromSlack(db, file_info)
+        if err != nil {
+            return err
+        }
+        
+        return nil
+    }
+    
+}
+
+func getFileInformation(db *Database, file_shared File_Shared) (file Files_Info, err error) {
+    url := fmt.Sprintf("https://slack.com/api/files.info?token=%s&file=%s", db.token, file_shared.File_ID)
+    resp, err := http.Get(url)
+    if err != nil || resp.StatusCode != 200 {
+        return
+    }
+      
+    body, err := ioutil.ReadAll(resp.Body)
+    resp.Body.Close()
+    if err != nil {
+        return
+    }  
+    
+    err = json.Unmarshal(body, &file)
+    if err != nil || !file.OK {
+        return
+    }
+    
+    return
+}
+
+func downloadFileFromSlack(db *Database, file Files_Info) error {
+    out, err := os.Create(db.rootloc + "files/" + file.File.Name)
+    if err != nil {
+        return err
+    }
+
+    client := &http.Client{}
+    req, err := http.NewRequest("GET", file.File.URL, nil)
+    if err != nil {
+        return err
+    }
+
+    req.Header.Set("Authorization", "Bearer "+db.token)
+
+    dl, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+
+    _, err = io.Copy(out, dl.Body)
+    if err != nil {
+        return err
+    }
+
+    out.Close()
+    dl.Body.Close()
+    return nil
 }
