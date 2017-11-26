@@ -115,6 +115,8 @@ func parsecmd(db *Database, m Message) string {
 		return remindmeSetup(m, db)
     case "addreaction":
         return addreaction(m, db)
+    case "chess":
+        return chess(m, db)
 	default:
 		return "sorry that does not compute"
 	}
