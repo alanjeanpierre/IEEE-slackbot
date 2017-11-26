@@ -322,6 +322,9 @@ func downloadFile(db *Database, b []byte) error {
         }
         
     }
+
+    return nil
+    
     
     return nil
 }
