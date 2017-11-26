@@ -588,7 +588,7 @@ func chess(m Message, db *Database) string {
             if !g.Ok {
                 g.Init()
             }
-            return g.Print()
+            return "\n```" + g.Print() + "```"
         } else {
             if !g.Ok {
                 g.Init()
