@@ -85,7 +85,8 @@ func main() {
 		}
 	}(&db)
 
-    readLoop(&db)
+	readLoop(&db)
+	log.Println("Finished")
 	
 }
 

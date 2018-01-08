@@ -47,13 +47,13 @@ func watsonToneAnalyzerQuery(text, tones string) (d Watson) {
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
 	var respObj Watson
 	err = json.Unmarshal(body, &respObj)
 	if err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
 	d = respObj
