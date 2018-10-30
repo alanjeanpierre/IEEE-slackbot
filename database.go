@@ -107,14 +107,14 @@ func (db *Database) getChannel(id string) string {
 	return channel
 }
 
-func (db *Database) getRelation(trigger string) (ok bool, relation, data string) {
-	rows, err := db.db.Query("select * from relations where trigger like ?;", trigger)
+func (db *Database) getRelation(trigger string) (err error, relation, data string) {
+	rows, err := db.db.Query("select * from relations where trigger = ?;", trigger)
 	if err != nil {
-		return false, "", ""
+		return err, "", ""
 	}
 	err = rows.Scan(&trigger, &relation, &data)
 	rows.Close()
-	return err != nil, relation, data
+	return err, relation, data
 }
 
 func (db *Database) addRelation(trigger, relation, data string) error {

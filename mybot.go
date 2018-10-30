@@ -172,12 +172,15 @@ func parseMessageContent(db *Database, m Message) {
         }
 	}    
 	
-	for trigger := range db.relations {
-		if text == trigger {
-			_, relation, data := db.getRelation(trigger)
-			respond(fmt.Sprintf("%s %s %s", trigger, relation, data), m, db.ws)
+	ok, _ := db.relations[m.Text]
+	if ok {
+		err, relation, data := db.getRelation(m.Text)
+		if err != nil {
+			log.Println(err)
 		}
+		respond(fmt.Sprintf("%s %s %s", m.Text, relation, data), m, db.ws)
 	}
+	
 }
 
 func getTime(tms, tns string) (int64, int64, error) {
