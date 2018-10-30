@@ -108,7 +108,7 @@ func (db *Database) getChannel(id string) string {
 }
 
 func (db *Database) getRelation(trigger string) (err error, relation, data string) {
-	row := db.db.QueryRow("select * from relations where trigger = ?;", trigger)
+	row := db.db.QueryRow("select * from relations where trigger = ? order by random() limit 1;", trigger)
 	if err != nil {
 		return err, "", ""
 	}

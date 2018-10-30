@@ -120,7 +120,7 @@ func parsecmd(db *Database, m Message) string {
         return chess(m, db)
 	default:
 		txt := strings.Join(parts[1:], " ")
-		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W<[\\w\\s]+>\\W")
+		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W\\*\\*[\\w\\s]+\\*\\*\\W")
 		if r.MatchString(txt) {
 			p2 := r.Split(txt, 2)
 			trigger, data := strings.Trim(p2[0], " "), strings.Trim(p2[1], " ")
