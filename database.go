@@ -108,12 +108,11 @@ func (db *Database) getChannel(id string) string {
 }
 
 func (db *Database) getRelation(trigger string) (err error, relation, data string) {
-	rows, err := db.db.Query("select * from relations where trigger = ?;", trigger)
+	row := db.db.QueryRow("select * from relations where trigger = ?;", trigger)
 	if err != nil {
 		return err, "", ""
 	}
-	err = rows.Scan(&trigger, &relation, &data)
-	rows.Close()
+	err = row.Scan(&trigger, &relation, &data)
 	return err, relation, data
 }
 
