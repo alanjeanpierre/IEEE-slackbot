@@ -119,11 +119,12 @@ func parsecmd(db *Database, m Message) string {
     case "chess":
         return chess(m, db)
 	default:
+		txt := strings.Join(parts[1:], " ")
 		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W<[\\w\\s]+>\\W")
-		if r.MatchString(m.Text) {
-			txt := r.Split(m.Text, 2)
-			trigger, data := txt[0], txt[1]
-			relation := r.FindString(m.Text)
+		if r.MatchString(txt) {
+			p2 := r.Split(m.Text, 2)
+			trigger, data := p2[0], p2[1]
+			relation := r.FindString(txt)
 			relation = strings.Trim(relation, " <>")
 			err := db.addRelation(trigger, relation, data)
 			if err != nil {
