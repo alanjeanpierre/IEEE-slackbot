@@ -125,7 +125,7 @@ func parsecmd(db *Database, m Message) string {
 			p2 := r.Split(txt, 2)
 			trigger, data := strings.Trim(p2[0], " "), strings.Trim(p2[1], " ")
 			relation := r.FindString(txt)
-			relation = strings.Trim(relation, " <>")
+			relation = strings.Trim(relation, " *")
 			err := db.addRelation(trigger, relation, data)
 			if err == nil {
 				//return db.getAffirmativeResponse()
