@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"regexp"
 )
 
 func parsecmd(db *Database, m Message) string {
@@ -118,7 +119,22 @@ func parsecmd(db *Database, m Message) string {
     case "chess":
         return chess(m, db)
 	default:
-		return "sorry that does not compute"
+		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W<[\\w\\s]+>\\W")
+		if r.MatchString(m.Text) {
+			txt := r.Split(m.Text, 2)
+			trigger, data := txt[0], txt[1]
+			relation := r.FindString(m.Text)
+			relation = strings.Trim(relation, " <>")
+			err := db.addRelation(trigger, relation, data)
+			if err != nil {
+				//return db.getAffirmativeResponse()
+				return "uh.... ok"
+			} else {
+				return "that didn't seem to work"
+			}
+		} else {
+			return "sorry that does not compute"
+		}
 	}
 
 	return "sorry that does not compute"

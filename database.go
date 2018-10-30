@@ -21,7 +21,8 @@ type Database struct {
 	users    map[string]string
 	channels map[string]string
 	banlist  map[string]bool
-    reactions   map[string]string
+	reactions   map[string]string
+	relations map[string]bool
 	boss     string
 	rootloc  string
 	token    string
@@ -106,6 +107,24 @@ func (db *Database) getChannel(id string) string {
 	return channel
 }
 
+func (db *Database) getRelation(trigger string) (ok bool, relation, data string) {
+	rows, err := db.db.Query("select * from relations where trigger like ?;", trigger)
+	if err != nil {
+		return false, "", ""
+	}
+	err = rows.Scan(&trigger, &relation, &data)
+	rows.Close()
+	return err != nil, relation, data
+}
+
+func (db *Database) addRelation(trigger, relation, data string) error {
+	db.relations[trigger] = true
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into relations values (?, ?, ?);", trigger, relation, data)
+	db.mutex.Unlock()
+	return err
+}
+
 // save the loaded maps to disk
 func (db *Database) save() {
 	file, err := os.OpenFile(db.rootloc+"usrs", os.O_WRONLY|os.O_CREATE, 0664)
@@ -187,27 +206,23 @@ func (db *Database) load() error {
         }
         db.reactions[trigger] = reaction
     }
-    rows.Close()
+	rows.Close()
+	
+	rows, err = db.db.Query("select trigger from relations;")
+	if err != nil {
+		log.Fatal("Unable to access relations")
+	}
 
-	/*
-		file, err := os.OpenFile(db.rootloc + "usrs", os.O_RDONLY, 0664)
-		if err == nil {
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				users := strings.Fields(scanner.Text())
-				db.users[users[0]] = strings.Join(users[1:], " ")
-			}
+	for rows.Next() {
+		var trigger string
+		err := rows.Scan(&trigger)
+		if err != nil {
+			log.Println("error scanning relation rows")
+			continue
 		}
-
-		file, err = os.OpenFile(db.rootloc + "channels", os.O_RDONLY, 0664)
-		if err == nil {
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				channels := strings.Fields(scanner.Text())
-				db.channels[channels[0]] = strings.Join(channels[1:], " ")
-			}
-		}
-	*/
+		db.relations[trigger] = true
+	}
+	rows.Close()
 
 	file, err := os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
 	if err != nil {
@@ -342,7 +357,8 @@ func setupDatabase(rootloc string) (*sql.DB, error) {
     create table if not exists links (uid text, link text);
     create table if not exists users (uid text primary key, username text);
     create table if not exists channels(cid text primary key, channel text);
-    create table if not exists reactions(uid text, trigger text, reaction text);
+	create table if not exists reactions(uid text, trigger text, reaction text);
+	create table if not exists relations(trigger text, relation text, data text);
     `
 	_, err = db.Exec(sqlStmt)
 	if err != nil {

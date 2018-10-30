@@ -170,7 +170,14 @@ func parseMessageContent(db *Database, m Message) {
             postReaction(db.token, m.Channel, m.TS, reaction) 
             time.Sleep(time.Second)
         }
-    }    
+	}    
+	
+	for trigger := range db.relations {
+		if text == trigger {
+			_, relation, data := db.getRelation(trigger)
+			respond(fmt.Sprintf("%s %s %s", trigger, relation, data), m, db.ws)
+		}
+	}
 }
 
 func getTime(tms, tns string) (int64, int64, error) {
