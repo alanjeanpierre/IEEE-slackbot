@@ -123,7 +123,7 @@ func parsecmd(db *Database, m Message) string {
 		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W<[\\w\\s]+>\\W")
 		if r.MatchString(txt) {
 			p2 := r.Split(m.Text, 2)
-			trigger, data := p2[0], p2[1]
+			trigger, data := Strings.Trim(p2[0], " "), Strings.Trim(p2[1], " ")
 			relation := r.FindString(txt)
 			relation = strings.Trim(relation, " <>")
 			err := db.addRelation(trigger, relation, data)
@@ -131,6 +131,7 @@ func parsecmd(db *Database, m Message) string {
 				//return db.getAffirmativeResponse()
 				return "uh.... ok"
 			} else {
+				log.Println(err)
 				return "that didn't seem to work"
 			}
 		} else {
