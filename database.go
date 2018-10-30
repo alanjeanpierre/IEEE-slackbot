@@ -158,7 +158,8 @@ func (db *Database) load() error {
 	db.users = make(map[string]string)
 	db.channels = make(map[string]string)
 	db.banlist = make(map[string]bool)
-    db.reactions = make(map[string]string)
+	db.reactions = make(map[string]string)
+	db.relations = make(map[string]bool)
 
 	rows, err := db.db.Query("select * from users;")
 	if err != nil {
