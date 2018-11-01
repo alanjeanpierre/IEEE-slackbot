@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -123,21 +122,21 @@ func (db *Database) getAllRelations(trigger string) (err error, data string) {
 	if err != nil {
 		return err, ""
 	}
-	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("%s is ", trigger))
+
+	var buffer []string
 	for rows.Next() {
 		var relation string
 		var data string
 		err := rows.Scan(&relation, &data)
 		if err != nil {
-			log.Println("error scanning users")
+			log.Println("error scanning all relations")
 			continue
 		}
-		buffer.WriteString(fmt.Sprintf("%s %s, ", relation, data))
+		buffer = append(buffer, fmt.Sprintf("%s %s; ", relation, data))
 	}
 	rows.Close()
 
-	return nil, buffer.String()
+	return nil, fmt.Sprintf("%s is ", trigger) + strings.Join(buffer, "; ")
 }
 
 func (db *Database) addRelation(trigger, relation, data string) error {
