@@ -132,11 +132,11 @@ func (db *Database) getAllRelations(trigger string) (err error, data string) {
 			log.Println("error scanning all relations")
 			continue
 		}
-		buffer = append(buffer, fmt.Sprintf("%s %s; ", relation, data))
+		buffer = append(buffer, fmt.Sprintf("%s %s", relation, data))
 	}
 	rows.Close()
 
-	return nil, fmt.Sprintf("%s is ", trigger) + strings.Join(buffer, "; ")
+	return nil, fmt.Sprintf("%s ", trigger) + strings.Join(buffer, "; ")
 }
 
 func (db *Database) addRelation(trigger, relation, data string) error {
