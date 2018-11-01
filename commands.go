@@ -11,10 +11,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"regexp"
 )
 
 func parsecmd(db *Database, m Message) string {
@@ -91,7 +91,7 @@ func parsecmd(db *Database, m Message) string {
 			}
 			for i := 1; i <= n; i++ {
 				postReaction(db.token, m.Channel, m.TS, num[i])
-                time.Sleep(time.Second)
+				time.Sleep(time.Second)
 			}
 		}
 		return ""
@@ -114,10 +114,25 @@ func parsecmd(db *Database, m Message) string {
 		return remindmeSetup(m, db)
 	case "remindall":
 		return remindmeSetup(m, db)
-    case "addreaction":
-        return addreaction(m, db)
-    case "chess":
-        return chess(m, db)
+	case "addreaction":
+		return addreaction(m, db)
+	case "chess":
+		return chess(m, db)
+	case "what":
+		if len(parts) > 3 && parts[2] == "about" {
+			topic := strings.Join(parts[3:], " ")
+			ok, _ := db.relations[topic]
+			if ok {
+				err, data := db.getAllRelations(topic)
+				if err != nil {
+					return "Uh oh, brain fart"
+				} else {
+					return data
+				}
+			} else {
+				return "I don't know anything about that"
+			}
+		}
 	default:
 		txt := strings.Join(parts[1:], " ")
 		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W\\*\\*[\\w\\s]+\\*\\*\\W")
@@ -277,18 +292,18 @@ func remindme(message string, duration time.Duration, m Message, db *Database) {
 }
 
 func addreaction(m Message, db *Database) string {
-    parts := strings.Split(m.Text, "\"")
-    
-    if len(parts) != 3 {
-        return "not enough arguments, need 2"
-    }
-    
-    trigger := parts[1]
-    reaction := strings.Trim(parts[2], " :")
-    err := db.addReaction(m.User, trigger, reaction)
-    if err != nil {
-        log.Println(err)
-        return "uh oh, that didn't work. Try again?"
-    }
-    return fmt.Sprintf("ok, I'll react with :%s: to \"%s\"", reaction, trigger)
+	parts := strings.Split(m.Text, "\"")
+
+	if len(parts) != 3 {
+		return "not enough arguments, need 2"
+	}
+
+	trigger := parts[1]
+	reaction := strings.Trim(parts[2], " :")
+	err := db.addReaction(m.User, trigger, reaction)
+	if err != nil {
+		log.Println(err)
+		return "uh oh, that didn't work. Try again?"
+	}
+	return fmt.Sprintf("ok, I'll react with :%s: to \"%s\"", reaction, trigger)
 }
