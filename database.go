@@ -179,7 +179,7 @@ func (db *Database) load(paramFile string) error {
     }
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
-		p := scanner.Text()
+		p := strings.TrimSpace(scanner.Text())
 		fields := strings.Split(p, "=")
 		db.parameters[fields[0]] = fields[1]
 	}
