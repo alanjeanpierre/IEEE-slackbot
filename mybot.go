@@ -51,6 +51,7 @@ func main() {
 
 	var db Database
 	db.uptime = time.Now()
+	err = db.load(os.Args[1])
 
 	// start a websocket-based Real Time API session
 	ws, botid, err := slackConnect(os.Args[1])
@@ -61,7 +62,6 @@ func main() {
 
 	db.ws = ws
 	db.botid = botid
-	err = db.load(os.Args[1])
     if err != nil {
         log.Fatal(err)
     }
