@@ -23,6 +23,7 @@ type Database struct {
 	banlist  map[string]bool
 	reactions   map[string]string
 	relations map[string]bool
+	parameters map[string]string
 	boss     string
 	rootloc  string
 	token    string
@@ -146,7 +147,20 @@ func (db *Database) save() {
 }
 
 // loads the users and channels and banlist from disk
-func (db *Database) load() error {
+func (db *Database) load(paramFile string) error {
+
+	db.parameters = make(map[string]string)
+	file, err := os.OpenFile(paramFile, os.O_RDONLY | os.O_CREATE, 0664)
+	if err != nil {
+        return err
+    }
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+		p := scanner.Text()
+		fields := strings.Split(p, "=")
+		db.parameters[fields[0]] = fields[1]
+	}
+	file.Close()
 
 	d, err := setupDatabase(db.rootloc)
 	db.db = d
@@ -224,12 +238,12 @@ func (db *Database) load() error {
 	}
 	rows.Close()
 
-	file, err := os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
+	file, err = os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
 	if err != nil {
     
         return err
     }
-    scanner := bufio.NewScanner(file)
+    scanner = bufio.NewScanner(file)
     for scanner.Scan() {
         banned := scanner.Text()
         db.banlist[banned] = true

@@ -117,7 +117,9 @@ func parsecmd(db *Database, m Message) string {
     case "addreaction":
         return addreaction(m, db)
     case "chess":
-        return chess(m, db)
+		return chess(m, db)
+	case "run":
+		return jdoodleRun(m, db)
 	default:
 		txt := strings.Join(parts[1:], " ")
 		r := regexp.MustCompile("\\bis\\b|\\bare\\b|\\W\\*\\*[\\w\\s]+\\*\\*\\W")

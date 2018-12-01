@@ -44,8 +44,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token admin-user /root/working/directory \n")
+	if len(os.Args) != 2 {
+		fmt.Fprintf(os.Stderr, "usage: mybot parameter-file \n")
 		os.Exit(1)
 	}
 
@@ -61,10 +61,7 @@ func main() {
 
 	db.ws = ws
 	db.botid = botid
-	db.token = os.Args[1]
-	db.boss = os.Args[2]
-	db.rootloc = os.Args[3]
-	err = db.load()
+	err = db.load(os.Args[1])
     if err != nil {
         log.Fatal(err)
     }
