@@ -188,9 +188,6 @@ func (db *Database) load(paramFile string) error {
 	db.boss = db.parameters["boss"]
 	db.rootloc = db.parameters["rootloc"]
 	db.token = db.parameters["token"]
-	boss     string
-	rootloc  string
-	token    string
 
 	d, err := setupDatabase(db.rootloc)
 	db.db = d
