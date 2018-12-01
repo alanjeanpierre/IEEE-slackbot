@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
-	"golang.org/x/net/websocket"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,14 +13,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/net/websocket"
 )
 
 type Database struct {
-	users    map[string]string
-	channels map[string]string
-	banlist  map[string]bool
-	reactions   map[string]string
+	users     map[string]string
+	channels  map[string]string
+	banlist   map[string]bool
+	reactions map[string]string
 	relations map[string]bool
+<<<<<<< HEAD
 	parameters map[string]string
 	boss     string
 	rootloc  string
@@ -33,6 +35,17 @@ type Database struct {
 	botid    string
 	db       *sql.DB
 	mutex    sync.Mutex
+=======
+	boss      string
+	rootloc   string
+	token     string
+	ws        *websocket.Conn
+	nmsg      int
+	uptime    time.Time
+	botid     string
+	db        *sql.DB
+	mutex     sync.Mutex
+>>>>>>> cd583dec6f15362027ba015ad55db63ab5e018a8
 }
 
 func (db *Database) insertUser(id, usr string) error {
@@ -68,12 +81,12 @@ func (db *Database) insertLink(uid, link string) error {
 }
 
 func (db *Database) addReaction(uid, trigger, reaction string) error {
-    
-    db.reactions[trigger] = reaction
-    db.mutex.Lock()
-    _, err := db.db.Exec("insert into reactions values (?, ?, ?)", uid, trigger, reaction)
-    db.mutex.Unlock()
-    return err
+
+	db.reactions[trigger] = reaction
+	db.mutex.Lock()
+	_, err := db.db.Exec("insert into reactions values (?, ?, ?)", uid, trigger, reaction)
+	db.mutex.Unlock()
+	return err
 }
 
 func (db *Database) isElevated(id string) bool {
@@ -115,6 +128,28 @@ func (db *Database) getRelation(trigger string) (err error, relation, data strin
 	}
 	err = row.Scan(&trigger, &relation, &data)
 	return err, relation, data
+}
+
+func (db *Database) getAllRelations(trigger string) (err error, data string) {
+	rows, err := db.db.Query("select relation, data from relations where trigger = ?", trigger)
+	if err != nil {
+		return err, ""
+	}
+
+	var buffer []string
+	for rows.Next() {
+		var relation string
+		var data string
+		err := rows.Scan(&relation, &data)
+		if err != nil {
+			log.Println("error scanning all relations")
+			continue
+		}
+		buffer = append(buffer, fmt.Sprintf("%s %s", relation, data))
+	}
+	rows.Close()
+
+	return nil, fmt.Sprintf("%s ", trigger) + strings.Join(buffer, "; ")
 }
 
 func (db *Database) addRelation(trigger, relation, data string) error {
@@ -205,23 +240,23 @@ func (db *Database) load(paramFile string) error {
 		db.channels[id] = name
 	}
 	rows.Close()
-    
-    rows, err = db.db.Query("select trigger, reaction from reactions;")
-    if err != nil {
-        log.Fatal("Unable to access reactions")
-    }
-    for rows.Next() {
-        var trigger string
-        var reaction string
-        err := rows.Scan(&trigger, &reaction)
-        if err != nil {
-            log.Println("error scanning reaction rows")
-            continue
-        }
-        db.reactions[trigger] = reaction
-    }
+
+	rows, err = db.db.Query("select trigger, reaction from reactions;")
+	if err != nil {
+		log.Fatal("Unable to access reactions")
+	}
+	for rows.Next() {
+		var trigger string
+		var reaction string
+		err := rows.Scan(&trigger, &reaction)
+		if err != nil {
+			log.Println("error scanning reaction rows")
+			continue
+		}
+		db.reactions[trigger] = reaction
+	}
 	rows.Close()
-	
+
 	rows, err = db.db.Query("select trigger from relations;")
 	if err != nil {
 		log.Fatal("Unable to access relations")
@@ -238,6 +273,7 @@ func (db *Database) load(paramFile string) error {
 	}
 	rows.Close()
 
+<<<<<<< HEAD
 	file, err = os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
 	if err != nil {
     
@@ -250,6 +286,20 @@ func (db *Database) load(paramFile string) error {
     }
 
     return nil
+=======
+	file, err := os.OpenFile(db.rootloc+"banlist", os.O_RDONLY|os.O_CREATE, 0664)
+	if err != nil {
+
+		return err
+	}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		banned := scanner.Text()
+		db.banlist[banned] = true
+	}
+
+	return nil
+>>>>>>> cd583dec6f15362027ba015ad55db63ab5e018a8
 }
 
 // queries slack api for user name from ID
