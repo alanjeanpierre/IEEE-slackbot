@@ -24,7 +24,6 @@ type Database struct {
 	banlist   map[string]bool
 	reactions map[string]string
 	relations map[string]bool
-<<<<<<< HEAD
 	parameters map[string]string
 	boss     string
 	rootloc  string
@@ -35,17 +34,6 @@ type Database struct {
 	botid    string
 	db       *sql.DB
 	mutex    sync.Mutex
-=======
-	boss      string
-	rootloc   string
-	token     string
-	ws        *websocket.Conn
-	nmsg      int
-	uptime    time.Time
-	botid     string
-	db        *sql.DB
-	mutex     sync.Mutex
->>>>>>> cd583dec6f15362027ba015ad55db63ab5e018a8
 }
 
 func (db *Database) insertUser(id, usr string) error {
@@ -196,6 +184,13 @@ func (db *Database) load(paramFile string) error {
 		db.parameters[fields[0]] = fields[1]
 	}
 	file.Close()
+	
+	db.boss = db.parameters["boss"]
+	db.rootloc = db.parameters["rootloc"]
+	db.token = db.parameters["token"]
+	boss     string
+	rootloc  string
+	token    string
 
 	d, err := setupDatabase(db.rootloc)
 	db.db = d
@@ -273,7 +268,6 @@ func (db *Database) load(paramFile string) error {
 	}
 	rows.Close()
 
-<<<<<<< HEAD
 	file, err = os.OpenFile(db.rootloc+"banlist", os.O_RDONLY | os.O_CREATE, 0664)
 	if err != nil {
     
@@ -286,20 +280,6 @@ func (db *Database) load(paramFile string) error {
     }
 
     return nil
-=======
-	file, err := os.OpenFile(db.rootloc+"banlist", os.O_RDONLY|os.O_CREATE, 0664)
-	if err != nil {
-
-		return err
-	}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		banned := scanner.Text()
-		db.banlist[banned] = true
-	}
-
-	return nil
->>>>>>> cd583dec6f15362027ba015ad55db63ab5e018a8
 }
 
 // queries slack api for user name from ID
