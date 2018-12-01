@@ -54,7 +54,7 @@ func main() {
 	err = db.load(os.Args[1])
 
 	// start a websocket-based Real Time API session
-	ws, botid, err := slackConnect(os.Args[1])
+	ws, botid, err := slackConnect(db.token)
 	if err != nil {
 		log.Fatal(err)
 	}
