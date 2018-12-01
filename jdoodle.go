@@ -87,6 +87,11 @@ func jdoodleRun(m Message, db *Database) string {
 }
 
 func runSnippet(id, secret, script, stdin, language string, version int) (error, JDoodleExecuteOutputSuccess, JDoodleExecuteOutputError) {
+	
+	
+	var success JDoodleExecuteOutputSuccess
+	var failure JDoodleExecuteOutputError
+
 	input := JDoodleExecuteInput{
 		ClientId: id,
 		ClientSecret: secret,
@@ -98,7 +103,7 @@ func runSnippet(id, secret, script, stdin, language string, version int) (error,
 	url := "https://api.jdoodle.com/v1/execute"
 	j, err := json.Marshal(input)
 	if err != nil {
-		panic(err)
+		return err, success, failure
 	}
 
 
@@ -107,7 +112,7 @@ func runSnippet(id, secret, script, stdin, language string, version int) (error,
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return err, success, failure
 	}
 	defer resp.Body.Close()
 	
@@ -116,20 +121,17 @@ func runSnippet(id, secret, script, stdin, language string, version int) (error,
     body, _ := ioutil.ReadAll(resp.Body)
 	fmt.Println("response Body:", string(body))
 
-	var success JDoodleExecuteOutputSuccess
-	var failure JDoodleExecuteOutputError
 	var e error
 	if resp.Status == "200 OK" {
 		e = nil
 		err = json.Unmarshal(body, &success)
 	} else {
 		e = errors.New("Fail!")
-		fmt.Println("Fail!!")
 		err = json.Unmarshal(body, &failure)
 	}
 
 	if err != nil {
-		panic(err)
+		return err, success, failure
 	}
 	return e, success, failure
 
